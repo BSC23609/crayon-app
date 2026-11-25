@@ -1,0 +1,279 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Crayon Sales | Sales to Dispatch</title>
+<link rel="icon" href="/logo.png">
+<style>
+:root{--navy:#002654;--navy2:#0b3a73;--amber:#E19619;--bg:#F5F6FA;--line:#e1e5ec;--txt:#1d1d1f;--mut:#6b7280;--ok:#15803d;--bad:#b91c1c}
+*{box-sizing:border-box}body{margin:0;font-family:Inter,Segoe UI,Arial,sans-serif;background:var(--bg);color:var(--txt);font-size:14px}
+a{color:var(--navy2)}button{font:inherit}
+#login{display:flex;min-height:100vh;align-items:center;justify-content:center}
+.card{background:#fff;border:1px solid var(--line);border-radius:10px;padding:20px}
+#login .card{width:340px;text-align:center}#login img{height:52px;margin-bottom:14px}
+#app{display:none;min-height:100vh}
+.side{position:fixed;inset:0 auto 0 0;width:210px;background:var(--navy);color:#fff;padding:16px 10px;display:flex;flex-direction:column}
+.side .logo{background:#fff;border-radius:8px;padding:8px;margin-bottom:18px}.side .logo img{width:100%;display:block}
+.side a{display:block;color:#cdd7e6;text-decoration:none;padding:9px 12px;border-radius:6px;margin:2px 0;cursor:pointer}
+.side a.on,.side a:hover{background:rgba(255,255,255,.12);color:#fff}.side a.on{border-left:3px solid var(--amber)}
+.side .foot{margin-top:auto;font-size:12px;color:#9fb0c8;padding:8px 12px}
+.main{margin-left:210px;padding:22px 26px}
+h2{margin:0 0 16px;color:var(--navy);font-size:20px}
+.bar{display:flex;gap:8px;align-items:center;margin-bottom:14px;flex-wrap:wrap}.bar .sp{flex:1}
+.btn{background:var(--navy);color:#fff;border:0;border-radius:6px;padding:8px 14px;cursor:pointer}
+.btn.ghost{background:#fff;color:var(--navy);border:1px solid var(--line)}.btn.amb{background:var(--amber)}
+.btn.red{background:var(--bad)}.btn.sm{padding:4px 9px;font-size:12px}
+input,select,textarea{font:inherit;border:1px solid var(--line);border-radius:6px;padding:7px 9px;width:100%;background:#fff}
+textarea{min-height:64px}label{font-size:12px;color:var(--mut);display:block;margin-bottom:3px}
+table.t{width:100%;border-collapse:collapse;background:#fff;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.t th{background:#eef1f6;color:var(--navy);text-align:left;padding:9px;font-size:12px;font-weight:600}
+.t td{padding:8px 9px;border-top:1px solid var(--line);vertical-align:top}.t tr.click{cursor:pointer}.t tr.click:hover td{background:#f8fafc}
+.r{text-align:right}.mut{color:var(--mut);font-size:12px}
+.pill{display:inline-block;padding:2px 9px;border-radius:20px;font-size:11px;font-weight:600;background:#eef1f6;color:var(--navy)}
+.pill.Won,.pill.Approved,.pill.Accepted,.pill.Done,.pill.Delivered,.pill.Ready{background:#dcfce7;color:var(--ok)}
+.pill.Lost,.pill.Rejected{background:#fee2e2;color:var(--bad)}
+.pill.Pending.Approval,.pill.Sent,.pill.Running,.pill.Loading{background:#fff3dc;color:#9a5b00}
+.pill.Dispatched,.pill.In.Production{background:#e0ecff;color:#1d4ed8}
+.kpis{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px;margin-bottom:18px}
+.kpi{background:#fff;border:1px solid var(--line);border-radius:10px;padding:14px;border-top:3px solid var(--navy)}
+.kpi b{display:block;font-size:24px;color:var(--navy);margin-top:4px}.kpi.a{border-top-color:var(--amber)}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px}
+.modal{position:fixed;inset:0;background:rgba(0,20,50,.45);display:none;align-items:flex-start;justify-content:center;padding:30px 10px;overflow:auto;z-index:20}
+.modal .card{width:min(1100px,100%)}.modal h3{margin:0 0 14px;color:var(--navy)}
+.mfoot{display:flex;gap:8px;justify-content:flex-end;margin-top:16px;flex-wrap:wrap}
+.lines td{padding:4px}.lines td:nth-child(5) select{min-width:70px}.lines input,.lines select{padding:5px 6px}
+.toast{position:fixed;bottom:18px;right:18px;background:var(--navy);color:#fff;padding:10px 16px;border-radius:8px;display:none;z-index:50}
+.toast.err{background:var(--bad)}
+.tot{margin-left:auto;width:300px}.tot div{display:flex;justify-content:space-between;padding:3px 0}.tot .g{font-weight:700;color:var(--navy);border-top:2px solid var(--navy);margin-top:4px;padding-top:6px}
+.sec{margin-top:18px}.sec h4{color:var(--navy);margin:0 0 8px}
+.warn{background:#fff3dc;border:1px solid #f5d08a;padding:8px 12px;border-radius:6px;color:#7a4a00;margin:8px 0}
+@media(max-width:800px){.side{position:static;width:auto;flex-direction:row;overflow:auto}.side .logo,.side .foot{display:none}.main{margin:0;padding:14px}}
+</style>
+</head>
+<body>
+<div id="login"><div class="card"><img src="/logo.png" alt="Crayon"><h3 style="color:var(--navy);margin:0 0 14px">Sales to Dispatch</h3>
+<input id="lem" placeholder="Email" autocomplete="username"><br><br>
+<input id="lpw" type="password" placeholder="Password" autocomplete="current-password"><br><br>
+<button class="btn" style="width:100%" onclick="doLogin()">Log in</button></div></div>
+
+<div id="app">
+<nav class="side"><div class="logo"><img src="/logo.png" alt="Crayon"></div>
+<a data-v="dash">Dashboard</a><a data-v="enq">Enquiries</a><a data-v="quote">Quotations</a><a data-v="order">Sales Orders</a>
+<a data-v="cut">Cutting Program</a><a data-v="disp">Dispatch</a><a data-v="cust">Customers</a><a data-v="prod">Products &amp; Rates</a>
+<a data-v="users" class="adm">Users</a><a data-v="set" class="adm">Settings</a>
+<div class="foot"><span id="who"></span><br><a style="padding:4px 0" onclick="chgPw()">Change password</a><a style="padding:4px 0" onclick="logout()">Log out</a><span id="build"></span></div></nav>
+<main class="main" id="view"></main>
+</div>
+<div class="modal" id="modal"><div class="card" id="mbody"></div></div>
+<div class="toast" id="toast"></div>
+
+<script>
+const $=s=>document.querySelector(s);
+let ME=null,CUST=[],PROD=[],USERS=[],SET={};
+const esc=v=>v==null?'':String(v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const inr=v=>Number(v||0).toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2});
+const n3=v=>{v=Number(v||0);return Number.isInteger(v)?v:v.toFixed(3).replace(/0+$/,'')};
+const pill=s=>`<span class="pill ${esc(s)}">${esc(s)}</span>`;
+const today=()=>new Date().toISOString().slice(0,10);
+const has=(...r)=>ME&&(ME.roles.includes('admin')||r.some(x=>ME.roles.includes(x)));
+function toast(m,err){const t=$('#toast');t.textContent=m;t.className='toast'+(err?' err':'');t.style.display='block';clearTimeout(t._h);t._h=setTimeout(()=>t.style.display='none',3200)}
+async function api(url,opt={}){const r=await fetch(url,{headers:{'Content-Type':'application/json'},credentials:'same-origin',...opt,body:opt.body?JSON.stringify(opt.body):undefined});
+ if(r.status===401&&!url.endsWith('/login')){showLogin();throw new Error('Please log in')}
+ const j=await r.json().catch(()=>({}));if(!r.ok){toast(j.detail||'Error',1);throw new Error(j.detail)}return j}
+const post=(u,b)=>api(u,{method:'POST',body:b||{}}),put=(u,b)=>api(u,{method:'PUT',body:b});
+
+function showLogin(){$('#login').style.display='flex';$('#app').style.display='none'}
+async function doLogin(){await api('/api/login',{method:'POST',body:{email:$('#lem').value,password:$('#lpw').value}});boot()}
+$('#lpw').addEventListener('keydown',e=>{if(e.key==='Enter')doLogin()});
+async function logout(){await post('/api/logout');showLogin()}
+async function boot(){try{ME=await api('/api/me')}catch(e){return showLogin()}
+ $('#login').style.display='none';$('#app').style.display='block';$('#who').textContent=ME.name+' ('+ME.roles.join(', ')+')';$('#build').textContent=' · build '+ME.build;
+ document.querySelectorAll('.adm').forEach(a=>a.style.display=has('admin')?'block':'none');
+ await loadMasters();route()}
+async function loadMasters(){[CUST,PROD,SET]=await Promise.all([api('/api/customers'),api('/api/products'),api('/api/settings')]);USERS=await api('/api/users')}
+document.querySelectorAll('.side a[data-v]').forEach(a=>a.onclick=()=>{location.hash=a.dataset.v});
+window.onhashchange=route;
+function route(){const v=(location.hash.slice(1)||'dash').split('/')[0];document.querySelectorAll('.side a').forEach(a=>a.classList.toggle('on',a.dataset.v===v));
+ ({dash,enq,quote,order,cut,disp,cust,prod,users,set}[v]||dash)()}
+
+/* ---------- generic form modal ---------- */
+function field(f,val){const v=val??f.def??'';
+ if(f.type==='select')return `<select id="f_${f.k}">${f.opts.map(o=>{const [ov,ol]=Array.isArray(o)?o:[o,o];return `<option value="${esc(ov)}" ${String(ov)===String(v)?'selected':''}>${esc(ol)}</option>`}).join('')}</select>`;
+ if(f.type==='area')return `<textarea id="f_${f.k}">${esc(v)}</textarea>`;
+ if(f.type==='check')return `<select id="f_${f.k}"><option value="true" ${v!==false?'selected':''}>Yes</option><option value="false" ${v===false?'selected':''}>No</option></select>`;
+ return `<input id="f_${f.k}" type="${f.type||'text'}" value="${esc(v)}" ${f.step?`step="${f.step}"`:''}>`}
+function form(title,fields,row,onSave,extra=''){
+ $('#mbody').innerHTML=`<h3>${title}</h3><div class="grid">${fields.map(f=>`<div style="${f.wide?'grid-column:1/-1':''}"><label>${f.l}</label>${field(f,row?.[f.k])}</div>`).join('')}</div>${extra}
+ <div class="mfoot"><button class="btn ghost" onclick="closeM()">Cancel</button><button class="btn" id="msave">Save</button></div>`;
+ openM();$('#msave').onclick=async()=>{const b={};fields.forEach(f=>{let v=$('#f_'+f.k).value;if(f.type==='check')v=v==='true';b[f.k]=v});await onSave(b);}}
+function openM(){$('#modal').style.display='flex'}function closeM(){$('#modal').style.display='none'}
+const custOpts=()=>[['','-- select --'],...CUST.filter(c=>c.active!==false).map(c=>[c.id,c.name])];
+const userOpts=()=>[['','--'],...USERS.map(u=>[u.id,u.name])];
+function table(cols,rows,onClick){if(!rows.length)return '<div class="card mut">No records yet.</div>';
+ return `<table class="t"><tr>${cols.map(c=>`<th class="${c.r?'r':''}">${c.l}</th>`).join('')}</tr>${rows.map((r,i)=>`<tr class="${onClick?'click':''}" data-i="${i}">${cols.map(c=>`<td class="${c.r?'r':''}">${c.f?c.f(r):esc(r[c.k])}</td>`).join('')}</tr>`).join('')}</table>`}
+function bindRows(rows,fn){document.querySelectorAll('#view tr.click').forEach(tr=>tr.onclick=()=>fn(rows[tr.dataset.i]))}
+function filterBar(statuses,cur,go){return `<select style="width:auto" onchange="${go}(this.value)"><option value="">All statuses</option>${statuses.map(s=>`<option ${s===cur?'selected':''}>${s}</option>`).join('')}</select>`}
+
+/* ---------- dashboard ---------- */
+async function dash(){const d=await api('/api/dashboard');
+ const k=(l,v,a)=>`<div class="kpi ${a?'a':''}">${l}<b>${v}</b></div>`;
+ $('#view').innerHTML=`<h2>Dashboard</h2><div class="kpis">${k('Open enquiries',d.open_enquiries)}${k('Follow-ups due',d.followups_due,1)}
+ ${k('Open quotes',d.quotes_open)}${k('Open quote value (Rs)',inr(d.quotes_value))}${k('Orders pending approval',d.pending_approval,1)}
+ ${k('Orders in production',d.in_production)}${k('Cutting lines pending',d.cutting_pending)}${k('Ready to dispatch',d.ready,1)}
+ ${k('Orders this month (Rs)',inr(d.month_orders))}${k('Dispatches this month',d.month_dispatches)}</div>
+ <div class="card mut">Flow: Enquiry → Quotation → Sales Order (approval) → Cutting Program → Dispatch</div>`}
+
+/* ---------- enquiries ---------- */
+const ENQ_ST=['Open','Quoted','Won','Lost'],SRC=['WhatsApp','Phone call','Walk-in','Dealer','Website','Email','Reference','Other'];
+async function enq(st=''){const rows=await api('/api/enquiries?status='+encodeURIComponent(st));window._enqSt=st;
+ $('#view').innerHTML=`<h2>Enquiries</h2><div class="bar">${filterBar(ENQ_ST,st,'enq')}<span class="sp"></span>${has('sales')?'<button class="btn" onclick="enqForm()">+ New enquiry</button>':''}</div>
+ ${table([{l:'Enq No',k:'enq_no'},{l:'Date',k:'enq_date'},{l:'Customer',f:r=>esc(r.customer||r.contact_name)},{l:'Source',k:'source'},{l:'Requirement',f:r=>esc((r.requirement||'').slice(0,70))},
+ {l:'Owner',k:'owner'},{l:'Follow-up',f:r=>r.follow_up&&r.follow_up<=today()&&['Open','Quoted'].includes(r.status)?`<b style="color:var(--bad)">${r.follow_up}</b>`:esc(r.follow_up)},{l:'Status',f:r=>pill(r.status)},
+ {l:'',f:r=>has('sales')&&r.status!=='Won'&&r.status!=='Lost'?`<button class="btn sm amb" onclick="event.stopPropagation();quoteForm(null,{enquiry_id:${r.id},customer_id:${r.customer_id||'null'}})">Quote</button>`:''}],rows,1)}`;
+ bindRows(rows,r=>enqForm(r))}
+function enqForm(r){form(r?'Enquiry '+r.enq_no:'New enquiry',[
+ {k:'enq_date',l:'Date',type:'date',def:today()},{k:'source',l:'Source',type:'select',opts:SRC},{k:'customer_id',l:'Customer (pick or add first)',type:'select',opts:custOpts()},
+ {k:'contact_name',l:'Contact name'},{k:'mobile',l:'Mobile'},{k:'site_location',l:'Site location'},
+ {k:'owner_id',l:'Owner',type:'select',opts:userOpts(),def:ME.id},{k:'follow_up',l:'Follow-up date',type:'date'},{k:'status',l:'Status',type:'select',opts:ENQ_ST},
+ {k:'requirement',l:'Requirement (sheet type, thickness, colour, lengths, qty)',type:'area',wide:1},{k:'lost_reason',l:'Lost reason (if lost)',wide:1}],r,
+ async b=>{r?await put('/api/enquiries/'+r.id,b):await post('/api/enquiries',b);closeM();toast('Saved');enq(window._enqSt||'')},
+ `<div class="mfoot" style="justify-content:flex-start"><button class="btn ghost sm" onclick="custForm(null,true)">+ Add new customer</button></div>`)}
+
+/* ---------- customers ---------- */
+async function cust(){CUST=await api('/api/customers');
+ $('#view').innerHTML=`<h2>Customers</h2><div class="bar"><input style="max-width:280px" placeholder="Search" oninput="custFilter(this.value)"><span class="sp"></span>${has('sales')?'<button class="btn" onclick="custForm()">+ New customer</button>':''}</div><div id="clist"></div>`;custFilter('')}
+function custFilter(q){q=q.toLowerCase();const rows=CUST.filter(c=>(c.name+' '+(c.city||'')+' '+(c.mobile||'')+' '+(c.gstin||'')).toLowerCase().includes(q));
+ $('#clist').innerHTML=table([{l:'Name',k:'name'},{l:'City',k:'city'},{l:'Mobile',k:'mobile'},{l:'GSTIN',k:'gstin'},{l:'Credit limit (Rs)',r:1,f:r=>inr(r.credit_limit)},{l:'Active',f:r=>r.active?'Yes':'No'}],rows,1);bindRows(rows,r=>custForm(r))}
+function custForm(r,back){form(r?r.name:'New customer',[{k:'name',l:'Name'},{k:'gstin',l:'GSTIN'},{k:'contact_person',l:'Contact person'},{k:'mobile',l:'Mobile'},{k:'email',l:'Email'},
+ {k:'city',l:'City'},{k:'state',l:'State',def:'Tamil Nadu'},{k:'credit_limit',l:'Credit limit (Rs) - 0 = cash/advance only',type:'number',def:0},{k:'active',l:'Active',type:'check'},{k:'address',l:'Address',type:'area',wide:1}],r,
+ async b=>{const s=r?await put('/api/customers/'+r.id,b):await post('/api/customers',b);CUST=await api('/api/customers');toast('Customer saved');
+  if(back){enqForm({customer_id:s.id,contact_name:s.contact_person,mobile:s.mobile,enq_date:today(),owner_id:ME.id,status:'Open'})}else{closeM();cust()}})}
+
+/* ---------- products ---------- */
+const UOMS=[['rft','Running ft'],['sqft','Sq ft'],['kg','Kg'],['nos','Nos'],['box','Box']];
+async function prod(){PROD=await api('/api/products');
+ $('#view').innerHTML=`<h2>Products &amp; Rates</h2><div class="bar"><span class="mut">Sample items are placeholders - load the real rate list here.</span><span class="sp"></span>${has('admin')?'<button class="btn" onclick="prodForm()">+ New product</button>':''}</div>
+ ${table([{l:'Code',k:'code'},{l:'Name',k:'name'},{l:'Category',k:'category'},{l:'UOM',k:'uom'},{l:'Rate (Rs)',r:1,f:r=>inr(r.rate)},{l:'GST %',r:1,f:r=>n3(r.gst_pct)},{l:'Kg / rft',r:1,f:r=>n3(r.kg_per_rft)},{l:'Cover width (ft)',r:1,f:r=>n3(r.cover_width_ft)},{l:'Active',f:r=>r.active?'Yes':'No'}],PROD,has('admin'))}`;
+ bindRows(PROD,r=>prodForm(r))}
+function prodForm(r){form(r?r.name:'New product',[{k:'code',l:'Code'},{k:'name',l:'Name',wide:1},{k:'category',l:'Category',type:'select',opts:['Sheet','Accessory','Screw','Consumable','Other']},
+ {k:'uom',l:'Sell by (UOM)',type:'select',opts:UOMS},{k:'rate',l:'Rate (Rs per UOM)',type:'number',step:'0.01'},{k:'gst_pct',l:'GST %',type:'number',def:18},
+ {k:'kg_per_rft',l:'Kg per running ft (for kg pricing)',type:'number',step:'0.0001',def:0},{k:'cover_width_ft',l:'Cover width ft (for sq ft pricing)',type:'number',step:'0.001',def:0},{k:'hsn',l:'HSN'},{k:'active',l:'Active',type:'check'}],r,
+ async b=>{r?await put('/api/products/'+r.id,b):await post('/api/products',b);closeM();toast('Saved');prod()})}
+
+/* ---------- quotations ---------- */
+const Q_ST=['Draft','Sent','Accepted','Rejected','Revised'];
+async function quote(st=''){const rows=await api('/api/quotes?status='+encodeURIComponent(st));window._qSt=st;
+ $('#view').innerHTML=`<h2>Quotations</h2><div class="bar">${filterBar(Q_ST,st,'quote')}<span class="sp"></span>${has('sales')?'<button class="btn" onclick="quoteForm()">+ New quotation</button>':''}</div>
+ ${table([{l:'Quote No',f:r=>esc(r.quote_no)+(r.rev?' R'+r.rev:'')},{l:'Date',k:'quote_date'},{l:'Customer',k:'customer'},{l:'Enquiry',k:'enq_no'},{l:'Valid till',k:'valid_till'},{l:'Total (Rs)',r:1,f:r=>inr(r.total)},{l:'Status',f:r=>pill(r.status)}],rows,1)}`;
+ bindRows(rows,r=>quoteView(r.id))}
+function calcLine(l){const p=PROD.find(x=>x.id==l.product_id)||{};const L=+l.length_ft||0,pcs=+l.pcs||0,u=l.uom||p.uom||'nos';let q;
+ if(u==='rft'&&L>0)q=L*pcs;else if(u==='kg'&&L>0&&+p.kg_per_rft>0)q=L*pcs*p.kg_per_rft;else if(u==='sqft'&&L>0&&+p.cover_width_ft>0)q=L*pcs*p.cover_width_ft;else q=+l.qty>0?+l.qty:pcs;
+ return {q:Math.round(q*1000)/1000,amt:Math.round(q*(+l.rate||0)*100)/100}}
+let QL=[];
+function quoteForm(q,pre={}){QL=q?q.items.map(i=>({...i})):[{}];const h=q||{customer_id:pre.customer_id,enquiry_id:pre.enquiry_id,discount_pct:0,freight:0};
+ $('#mbody').innerHTML=`<h3>${q?'Edit '+esc(q.quote_no)+(q.rev?' R'+q.rev:''):'New quotation'}</h3>
+ <div class="grid"><div><label>Customer</label>${field({k:'customer_id',type:'select',opts:custOpts()},h.customer_id)}</div>
+ <div><label>Quote date</label>${field({k:'quote_date',type:'date'},h.quote_date||today())}</div><div><label>Valid till (blank = default)</label>${field({k:'valid_till',type:'date'},h.valid_till)}</div>
+ <div><label>Discount %</label>${field({k:'discount_pct',type:'number'},h.discount_pct)}</div><div><label>Freight (Rs)</label>${field({k:'freight',type:'number'},h.freight)}</div></div>
+ <div class="sec"><h4>Items</h4><table class="t lines" id="qlines"></table><button class="btn ghost sm" style="margin-top:6px" onclick="QL.push({});drawLines()">+ Add line</button></div>
+ <div class="tot" id="qtot"></div><div class="grid" style="margin-top:10px"><div style="grid-column:1/-1"><label>Notes</label>${field({k:'notes',type:'area'},h.notes)}</div>
+ ${q?`<div style="grid-column:1/-1"><label>Terms</label>${field({k:'terms',type:'area'},h.terms)}</div>`:''}</div>
+ <div class="mfoot"><button class="btn ghost" onclick="closeM()">Cancel</button><button class="btn" id="qsave">Save quotation</button></div>`;
+ openM();drawLines();$('#f_discount_pct').oninput=drawTot;$('#f_freight').oninput=drawTot;
+ $('#qsave').onclick=async()=>{const b={customer_id:$('#f_customer_id').value,quote_date:$('#f_quote_date').value,valid_till:$('#f_valid_till').value,discount_pct:$('#f_discount_pct').value,freight:$('#f_freight').value,notes:$('#f_notes').value,enquiry_id:h.enquiry_id||null,items:QL};
+  if(q)b.terms=$('#f_terms').value;const s=q?await put('/api/quotes/'+q.id,b):await post('/api/quotes',b);toast('Quotation saved');quoteView(s.id);if(location.hash.startsWith('#quote'))quote(window._qSt||'')}}
+function drawLines(){const po=[['','-- product --'],...PROD.filter(p=>p.active).map(p=>[p.id,p.name])];
+ $('#qlines').innerHTML=`<tr><th style="width:30%">Product</th><th>Colour</th><th>Length (ft)</th><th>Pcs</th><th>UOM</th><th>Qty</th><th>Rate</th><th>GST%</th><th class="r">Amount</th><th></th></tr>`+QL.map((l,i)=>{const c=calcLine(l);
+ return `<tr><td><select onchange="setL(${i},'product_id',this.value,1)">${po.map(([v,t])=>`<option value="${v}" ${v==l.product_id?'selected':''}>${esc(t)}</option>`).join('')}</select>
+ <input style="margin-top:3px" placeholder="Description (optional)" value="${esc(l.description||'')}" onchange="setL(${i},'description',this.value)"></td>
+ <td><input value="${esc(l.colour||'')}" onchange="setL(${i},'colour',this.value)"></td><td><input type="number" step="0.01" value="${esc(l.length_ft||'')}" oninput="setL(${i},'length_ft',this.value)"></td>
+ <td><input type="number" value="${esc(l.pcs||'')}" oninput="setL(${i},'pcs',this.value)"></td><td><select onchange="setL(${i},'uom',this.value,1)">${UOMS.map(([v,t])=>`<option value="${v}" ${v==(l.uom||'nos')?'selected':''}>${v}</option>`).join('')}</select></td>
+ <td><input type="number" step="0.001" value="${esc(l.qty||'')}" id="qty${i}" placeholder="${n3(c.q)}" oninput="setL(${i},'qty',this.value)" title="Auto from length x pcs; type only for nos/box items"></td>
+ <td><input type="number" step="0.01" value="${esc(l.rate??'')}" oninput="setL(${i},'rate',this.value)"></td><td><input type="number" value="${esc(l.gst_pct??18)}" oninput="setL(${i},'gst_pct',this.value)"></td>
+ <td class="r" id="amt${i}">${inr(c.amt)}</td><td><button class="btn sm red" onclick="QL.splice(${i},1);drawLines()">x</button></td></tr>`}).join('');drawTot()}
+function setL(i,k,v,redraw){const l=QL[i];l[k]=v;if(k==='product_id'){const p=PROD.find(x=>x.id==v);if(p){l.uom=p.uom;l.rate=p.rate;l.gst_pct=p.gst_pct;l.description=''}}
+ if(redraw)drawLines();else{const c=calcLine(l);$('#amt'+i).textContent=inr(c.amt);$('#qty'+i).placeholder=n3(c.q);drawTot()}}
+function drawTot(){let sub=0,gst=0;const d=+$('#f_discount_pct').value||0,f=+$('#f_freight').value||0;QL.forEach(l=>{const a=calcLine(l).amt;sub+=a;gst+=a*(1-d/100)*(+l.gst_pct||0)/100});
+ const disc=sub*d/100;$('#qtot').innerHTML=`<div><span>Sub total</span><span>${inr(sub)}</span></div>${d?`<div><span>Discount ${d}%</span><span>- ${inr(disc)}</span></div>`:''}<div><span>GST</span><span>${inr(gst)}</span></div>${f?`<div><span>Freight</span><span>${inr(f)}</span></div>`:''}<div class="g"><span>Total (Rs)</span><span>${inr(sub-disc+gst+f)}</span></div>`;
+ const mx=+SET.max_discount_pct||0;if(d>mx)$('#qtot').innerHTML+=`<div class="warn">Discount above ${mx}% - the order will need approval.</div>`}
+async function quoteView(id){const q=await api('/api/quotes/'+id);const ed=['Draft','Sent'].includes(q.status)&&has('sales');const no=q.quote_no+(q.rev?' R'+q.rev:'');
+ $('#mbody').innerHTML=`<h3>Quotation ${esc(no)} ${pill(q.status)}</h3><div class="mut">${esc(q.customer)} · ${esc(q.quote_date)} · valid till ${esc(q.valid_till)}</div>
+ <div class="sec">${table([{l:'Item',f:r=>esc(r.description)+(r.colour?' - '+esc(r.colour):'')},{l:'Length',r:1,f:r=>+r.length_ft?n3(r.length_ft):''},{l:'Pcs',r:1,f:r=>n3(r.pcs)},{l:'Qty',r:1,f:r=>n3(r.qty)+' '+esc(r.uom)},{l:'Rate',r:1,f:r=>inr(r.rate)},{l:'GST%',r:1,f:r=>n3(r.gst_pct)},{l:'Amount',r:1,f:r=>inr(r.amount)}],q.items)}</div>
+ <div class="tot"><div><span>Sub total</span><span>${inr(q.subtotal)}</span></div>${+q.discount_amt?`<div><span>Discount ${n3(q.discount_pct)}%</span><span>- ${inr(q.discount_amt)}</span></div>`:''}<div><span>GST</span><span>${inr(q.gst_amt)}</span></div>${+q.freight?`<div><span>Freight</span><span>${inr(q.freight)}</span></div>`:''}<div class="g"><span>Total (Rs)</span><span>${inr(q.total)}</span></div></div>
+ <div class="mfoot"><button class="btn ghost" onclick="closeM()">Close</button><a class="btn ghost" style="text-decoration:none" target="_blank" href="/print/quote/${q.id}">Print / PDF</a>
+ ${ed?`<button class="btn ghost" onclick='quoteForm(${JSON.stringify(q).replace(/'/g,"&#39;")})'>Edit</button>`:''}
+ ${has('sales')&&q.status!=='Revised'?`<button class="btn ghost" onclick="reviseQ(${q.id})">New revision</button>`:''}
+ ${ed&&q.status==='Draft'?`<button class="btn ghost" onclick="qStatus(${q.id},'Sent')">Mark sent</button>`:''}
+ ${ed?`<button class="btn red" onclick="qStatus(${q.id},'Rejected')">Customer rejected</button><button class="btn amb" onclick="convertForm(${q.id})">Convert to Sales Order</button>`:''}</div>`;openM()}
+async function reviseQ(id){const q=await post(`/api/quotes/${id}/revise`);toast('Revision created');quoteForm(q)}
+async function qStatus(id,s){await post(`/api/quotes/${id}/status`,{status:s});toast('Updated');quoteView(id);if(location.hash.startsWith('#quote'))quote(window._qSt||'')}
+function convertForm(id){form('Convert to Sales Order',[{k:'customer_po',l:'Customer PO / reference'},{k:'advance',l:'Advance received (Rs)',type:'number',def:0},{k:'delivery_date',l:'Promised delivery date',type:'date'},
+ {k:'site_address',l:'Delivery site address',type:'area',wide:1},{k:'notes',l:'Notes',type:'area',wide:1}],null,async b=>{const o=await post(`/api/quotes/${id}/convert`,b);toast(o.status==='Approved'?'Order created and approved':'Order created - sent for approval');location.hash='order';orderView(o.id)})}
+
+/* ---------- sales orders ---------- */
+const O_ST=['Pending Approval','Approved','Rejected','In Production','Ready','Dispatched','Closed'];
+async function order(st=''){const rows=await api('/api/orders?status='+encodeURIComponent(st));window._oSt=st;
+ $('#view').innerHTML=`<h2>Sales Orders</h2><div class="bar">${filterBar(O_ST,st,'order')}<span class="sp"></span><span class="mut">Orders are created from an accepted quotation.</span></div>
+ ${table([{l:'SO No',k:'so_no'},{l:'Date',k:'so_date'},{l:'Customer',k:'customer'},{l:'Quote',f:r=>esc(r.quote_no||'')+(r.rev?' R'+r.rev:'')},{l:'Delivery',k:'delivery_date'},{l:'Total (Rs)',r:1,f:r=>inr(r.total)},{l:'Advance (Rs)',r:1,f:r=>inr(r.advance)},{l:'Status',f:r=>pill(r.status)}],rows,1)}`;
+ bindRows(rows,r=>orderView(r.id))}
+async function orderView(id){const o=await api('/api/orders/'+id);
+ $('#mbody').innerHTML=`<h3>Sales Order ${esc(o.so_no)} ${pill(o.status)}</h3><div class="mut">${esc(o.customer)} · ${esc(o.so_date)}${o.customer_po?' · PO '+esc(o.customer_po):''}${o.delivery_date?' · delivery '+esc(o.delivery_date):''} · Total Rs ${inr(o.total)} · Advance Rs ${inr(o.advance)}</div>
+ ${o.approval_reason?`<div class="warn"><b>Approval needed:</b> ${esc(o.approval_reason)}${o.approved_by_name?`<br>${esc(o.status)} by ${esc(o.approved_by_name)}${o.approval_note?': '+esc(o.approval_note):''}`:''}</div>`:''}
+ <div class="sec"><h4>Items</h4>${table([{l:'Item',f:r=>esc(r.description)+(r.colour?' - '+esc(r.colour):'')},{l:'Length',r:1,f:r=>+r.length_ft?n3(r.length_ft):''},{l:'Pcs',r:1,f:r=>n3(r.pcs)},{l:'Qty',r:1,f:r=>n3(r.qty)+' '+esc(r.uom)},{l:'Amount',r:1,f:r=>inr(r.amount)},{l:'Cut pcs',r:1,f:r=>n3(r.cut_pcs)},{l:'Dispatched pcs',r:1,f:r=>n3(r.dispatched_pcs)}],o.items)}</div>
+ <div class="sec"><h4>Cutting program</h4>${table([{l:'Length (ft)',r:1,f:r=>n3(r.length_ft)},{l:'Pcs',r:1,f:r=>n3(r.pcs)},{l:'Coil',k:'coil_no'},{l:'Machine',k:'machine'},{l:'Plan date',k:'plan_date'},{l:'Status',f:r=>pill(r.status)}],o.cutting)}</div>
+ <div class="sec"><h4>Dispatches</h4>${table([{l:'DC No',f:r=>`<a target="_blank" href="/print/dc/${r.id}">${esc(r.dc_no)}</a>`},{l:'Date',k:'dc_date'},{l:'Vehicle',k:'vehicle_no'},{l:'Invoice',k:'invoice_no'},{l:'E-way bill',k:'eway_bill_no'},{l:'Status',f:r=>pill(r.status)}],o.dispatches)}</div>
+ <div class="mfoot"><button class="btn ghost" onclick="closeM()">Close</button>
+ ${o.status==='Pending Approval'&&has('approver')?`<button class="btn red" onclick="approveO(${o.id},'reject')">Reject</button><button class="btn" onclick="approveO(${o.id},'approve')">Approve</button>`:''}
+ ${['Approved','In Production'].includes(o.status)&&has('production')?`<button class="btn ghost" onclick="cutForm(${o.id})">Add cutting line</button><button class="btn ghost" onclick="autoCut(${o.id})">Plan all sheet lines</button>`:''}
+ ${['Approved','In Production','Ready'].includes(o.status)&&has('dispatch')?`<button class="btn amb" onclick="dispForm(${o.id})">Create dispatch</button>`:''}
+ ${o.status==='Dispatched'&&has('sales')?`<button class="btn ghost" onclick="oStatus(${o.id},'Closed')">Close order</button>`:''}</div>`;openM();window._order=o}
+async function approveO(id,d){const note=prompt(d==='approve'?'Approval note (optional)':'Reason for rejection');if(note===null)return;await post(`/api/orders/${id}/approve`,{decision:d,note});toast('Done');orderView(id);refresh()}
+async function oStatus(id,s){await post(`/api/orders/${id}/status`,{status:s});toast('Updated');orderView(id);refresh()}
+async function autoCut(id){await post(`/api/orders/${id}/cutting`,{auto:true});toast('Cutting lines planned');orderView(id);refresh()}
+function cutForm(id){const o=window._order;form('Add cutting line - '+o.so_no,[{k:'order_item_id',l:'Order item',type:'select',opts:o.items.map(i=>[i.id,i.description+(i.colour?' - '+i.colour:'')])},
+ {k:'length_ft',l:'Length (ft)',type:'number'},{k:'pcs',l:'Pcs',type:'number'},{k:'coil_no',l:'Coil no'},{k:'machine',l:'Machine'},{k:'plan_date',l:'Plan date',type:'date',def:today()}],null,
+ async b=>{await post(`/api/orders/${id}/cutting`,{lines:[b]});toast('Added');orderView(id);refresh()})}
+function refresh(){route()}
+
+/* ---------- cutting board ---------- */
+const C_ST=['Planned','Running','Done'];
+async function cut(st=''){const rows=await api('/api/cutting?status='+encodeURIComponent(st));window._cSt=st;
+ $('#view').innerHTML=`<h2>Cutting Program</h2><div class="bar">${filterBar(C_ST,st,'cut')}<span class="sp"></span><span class="mut">Plan lines from a Sales Order. Update coil, machine and status here.</span></div>
+ ${table([{l:'Plan date',k:'plan_date'},{l:'SO',k:'so_no'},{l:'Customer',k:'customer'},{l:'Item',f:r=>esc(r.description)+(r.colour?' - '+esc(r.colour):'')},{l:'Length (ft)',r:1,f:r=>n3(r.length_ft)},{l:'Pcs',r:1,f:r=>n3(r.pcs)},{l:'Done pcs',r:1,f:r=>n3(r.done_pcs)},{l:'Coil',k:'coil_no'},{l:'Machine',k:'machine'},{l:'Status',f:r=>pill(r.status)}],rows,has('production'))}`;
+ bindRows(rows,r=>form('Cutting line - '+r.so_no,[{k:'coil_no',l:'Coil no'},{k:'machine',l:'Machine'},{k:'plan_date',l:'Plan date',type:'date'},{k:'length_ft',l:'Length (ft)',type:'number'},{k:'pcs',l:'Pcs',type:'number'},
+ {k:'done_pcs',l:'Done pcs',type:'number'},{k:'status',l:'Status',type:'select',opts:C_ST},{k:'remarks',l:'Remarks',wide:1}],r,async b=>{await put('/api/cutting/'+r.id,b);closeM();toast('Updated');cut(window._cSt||'')}))}
+
+/* ---------- dispatch ---------- */
+const D_ST=['Loading','Dispatched','Delivered'];
+async function disp(st=''){const rows=await api('/api/dispatches?status='+encodeURIComponent(st));window._dSt=st;
+ $('#view').innerHTML=`<h2>Dispatch</h2><div class="bar">${filterBar(D_ST,st,'disp')}<span class="sp"></span><span class="mut">Create a dispatch from a Sales Order.</span></div>
+ ${table([{l:'DC No',k:'dc_no'},{l:'Date',k:'dc_date'},{l:'SO',k:'so_no'},{l:'Customer',k:'customer'},{l:'Vehicle',k:'vehicle_no'},{l:'Driver',f:r=>esc(r.driver_name||'')+' '+esc(r.driver_mobile||'')},{l:'Invoice',k:'invoice_no'},{l:'E-way bill',k:'eway_bill_no'},{l:'Status',f:r=>pill(r.status)},
+ {l:'',f:r=>`<a class="btn sm ghost" style="text-decoration:none" target="_blank" onclick="event.stopPropagation()" href="/print/dc/${r.id}">DC</a>`}],rows,has('dispatch'))}`;
+ bindRows(rows,r=>dispEdit(r))}
+const DF=[{k:'dc_date',l:'DC date',type:'date'},{k:'vehicle_no',l:'Vehicle no'},{k:'transporter',l:'Transporter'},{k:'driver_name',l:'Driver name'},{k:'driver_mobile',l:'Driver mobile'},
+ {k:'invoice_no',l:'Tally invoice no'},{k:'eway_bill_no',l:'E-way bill no'},{k:'status',l:'Status',type:'select',opts:D_ST},{k:'delivered_on',l:'Delivered on',type:'date'},{k:'pod_note',l:'POD / delivery note',wide:1},{k:'remarks',l:'Remarks',wide:1}];
+function dispEdit(r){form('Dispatch '+r.dc_no,DF,r,async b=>{await put('/api/dispatches/'+r.id,b);closeM();toast('Updated');disp(window._dSt||'')})}
+function dispForm(id){const o=window._order;const left=o.items.filter(i=>+i.pcs-+i.dispatched_pcs>0);
+ const extra=`<div class="sec"><h4>Items to load (pcs)</h4>${table([{l:'Item',f:r=>esc(r.description)+(r.colour?' - '+esc(r.colour):'')+(+r.length_ft?' · '+n3(r.length_ft)+' ft':'')},{l:'Balance pcs',r:1,f:r=>n3(r.pcs-r.dispatched_pcs)},{l:'Load pcs',f:r=>`<input type="number" class="dpcs" data-id="${r.id}" value="${n3(r.pcs-r.dispatched_pcs)}">`}],left)}</div>`;
+ form('Create dispatch - '+o.so_no,DF.filter(f=>!['status','delivered_on','pod_note'].includes(f.k)),{dc_date:today()},async b=>{
+  b.items=[...document.querySelectorAll('.dpcs')].map(x=>({order_item_id:x.dataset.id,pcs:x.value})).filter(x=>+x.pcs>0);
+  const d=await post(`/api/orders/${id}/dispatch`,b);toast('Dispatch '+d.dc_no+' created');window.open('/print/dc/'+d.id,'_blank');orderView(id);refresh()},extra)}
+
+/* ---------- users & settings ---------- */
+const ROLES='admin, sales, approver, production, dispatch';
+async function users(){USERS=await api('/api/users');
+ $('#view').innerHTML=`<h2>Users</h2><div class="bar"><span class="mut">Roles: ${ROLES} (comma separated, a user can have more than one)</span><span class="sp"></span><button class="btn" onclick="userForm()">+ New user</button></div>
+ ${table([{l:'Name',k:'name'},{l:'Email',k:'email'},{l:'Mobile',k:'mobile'},{l:'Roles',k:'roles'},{l:'Active',f:r=>r.active?'Yes':'No'}],USERS,1)}`;bindRows(USERS,r=>userForm(r))}
+function userForm(r){form(r?r.name:'New user',[{k:'name',l:'Name'},{k:'email',l:'Email (login)'},{k:'mobile',l:'Mobile'},{k:'roles',l:'Roles',def:'sales'},{k:'active',l:'Active',type:'check'},{k:'password',l:r?'New password (blank = keep)':'Password',type:'password'}],r,
+ async b=>{if(!b.password)delete b.password;r?await put('/api/users/'+r.id,b):await post('/api/users',b);closeM();toast('Saved');users()})}
+async function set(){SET=await api('/api/settings');const F=[{k:'company_name',l:'Company name'},{k:'company_gstin',l:'Company GSTIN'},{k:'company_phone',l:'Phone'},{k:'company_email',l:'Email'},
+ {k:'max_discount_pct',l:'Max discount % without approval',type:'number'},{k:'quote_validity_days',l:'Quote validity (days)',type:'number'},{k:'company_address',l:'Address (prints on quote and DC)',type:'area',wide:1},{k:'quote_terms',l:'Default quotation terms',type:'area',wide:1}];
+ $('#view').innerHTML=`<h2>Settings</h2><div class="card"><div class="grid">${F.map(f=>`<div style="${f.wide?'grid-column:1/-1':''}"><label>${f.l}</label>${field(f,SET[f.k])}</div>`).join('')}</div><div class="mfoot"><button class="btn" id="sset">Save settings</button></div></div>`;
+ $('#sset').onclick=async()=>{const b={};F.forEach(f=>b[f.k]=$('#f_'+f.k).value);SET=await put('/api/settings',b);toast('Settings saved')}}
+function chgPw(){form('Change password',[{k:'old',l:'Current password',type:'password'},{k:'new',l:'New password',type:'password'}],null,async b=>{await post('/api/me/password',b);closeM();toast('Password changed')})}
+$('#modal').addEventListener('click',e=>{if(e.target.id==='modal')closeM()});
+boot();
+</script>
+</body>
+</html>
