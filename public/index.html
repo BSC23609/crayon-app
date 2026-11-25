@@ -13,10 +13,15 @@ a{color:var(--navy2)}button{font:inherit}
 .card{background:#fff;border:1px solid var(--line);border-radius:10px;padding:20px}
 #login .card{width:340px;text-align:center}#login img{height:52px;margin-bottom:14px}
 #app{display:none;min-height:100vh}
-.side{position:fixed;inset:0 auto 0 0;width:210px;background:var(--navy);color:#fff;padding:16px 10px;display:flex;flex-direction:column}
+.side{position:fixed;inset:0 auto 0 0;width:210px;overflow-y:auto;background:var(--navy);color:#fff;padding:16px 10px;display:flex;flex-direction:column}
 .side .logo{background:#fff;border-radius:8px;padding:8px;margin-bottom:18px}.side .logo img{width:100%;display:block}
 .side a{display:block;color:#cdd7e6;text-decoration:none;padding:9px 12px;border-radius:6px;margin:2px 0;cursor:pointer}
 .side a.on,.side a:hover{background:rgba(255,255,255,.12);color:#fff}.side a.on{border-left:3px solid var(--amber)}
+.mod{margin-bottom:6px}.mhd{display:flex;justify-content:space-between;align-items:center;padding:9px 12px;border-radius:6px;cursor:pointer;
+ font-size:11px;font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:#fff;background:rgba(255,255,255,.06)}
+.mhd:hover{background:rgba(255,255,255,.12)}.mhd i{font-style:normal;transition:transform .2s;color:var(--amber)}
+.mod:not(.open) .mhd i{transform:rotate(-90deg)}.mod:not(.open) .mitems{display:none}
+.mitems{padding:4px 0 2px 8px;border-left:1px solid rgba(255,255,255,.12);margin:4px 0 0 12px}
 .side .foot{margin-top:auto;font-size:12px;color:#9fb0c8;padding:8px 12px}
 .main{margin-left:210px;padding:22px 26px}
 h2{margin:0 0 16px;color:var(--navy);font-size:20px}
@@ -48,7 +53,7 @@ table.t{width:100%;border-collapse:collapse;background:#fff;border:1px solid var
 .tot{margin-left:auto;width:300px}.tot div{display:flex;justify-content:space-between;padding:3px 0}.tot .g{font-weight:700;color:var(--navy);border-top:2px solid var(--navy);margin-top:4px;padding-top:6px}
 .sec{margin-top:18px}.sec h4{color:var(--navy);margin:0 0 8px}
 .warn{background:#fff3dc;border:1px solid #f5d08a;padding:8px 12px;border-radius:6px;color:#7a4a00;margin:8px 0}
-@media(max-width:800px){.side{position:static;width:auto;flex-direction:row;overflow:auto}.side .logo,.side .foot{display:none}.main{margin:0;padding:14px}}
+@media(max-width:800px){.side{position:static;width:auto;flex-direction:row;overflow:auto}.mod{display:flex;align-items:center}.mitems{display:flex!important;border:0;margin:0}.side .logo,.side .foot{display:none}.main{margin:0;padding:14px}}
 </style>
 </head>
 <body>
@@ -59,9 +64,11 @@ table.t{width:100%;border-collapse:collapse;background:#fff;border:1px solid var
 
 <div id="app">
 <nav class="side"><div class="logo"><img src="/logo.png" alt="Crayon"></div>
-<a data-v="dash">Dashboard</a><a data-v="enq">Enquiries</a><a data-v="quote">Quotations</a><a data-v="order">Sales Orders</a>
-<a data-v="cut">Cutting Program</a><a data-v="disp">Dispatch</a><a data-v="cust">Customers</a><a data-v="prod">Products &amp; Rates</a>
-<a data-v="users" class="adm">Users</a><a data-v="set" class="adm">Settings</a>
+<div class="mod open" id="m_sales"><div class="mhd" onclick="this.parentNode.classList.toggle('open')"><span>Sales &amp; Dispatch</span><i>&#9662;</i></div>
+<div class="mitems"><a data-v="dash">Dashboard</a><a data-v="enq">Enquiries</a><a data-v="quote">Quotations</a><a data-v="order">Sales Orders</a>
+<a data-v="cut">Cutting Program</a><a data-v="disp">Dispatch</a><a data-v="cust">Customers</a><a data-v="prod">Products &amp; Rates</a></div></div>
+<div class="mod adm" id="m_admin"><div class="mhd" onclick="this.parentNode.classList.toggle('open')"><span>Admin</span><i>&#9662;</i></div>
+<div class="mitems"><a data-v="users">Users</a><a data-v="set">Settings</a></div></div>
 <div class="foot"><span id="who"></span><br><a style="padding:4px 0" onclick="chgPw()">Change password</a><a style="padding:4px 0" onclick="logout()">Log out</a><span id="build"></span></div></nav>
 <main class="main" id="view"></main>
 </div>
@@ -95,6 +102,7 @@ async function loadMasters(){[CUST,PROD,SET]=await Promise.all([api('/api/custom
 document.querySelectorAll('.side a[data-v]').forEach(a=>a.onclick=()=>{location.hash=a.dataset.v});
 window.onhashchange=route;
 function route(){const v=(location.hash.slice(1)||'dash').split('/')[0];document.querySelectorAll('.side a').forEach(a=>a.classList.toggle('on',a.dataset.v===v));
+ const on=document.querySelector('.side a.on');if(on)on.closest('.mod').classList.add('open');
  ({dash,enq,quote,order,cut,disp,cust,prod,users,set}[v]||dash)()}
 
 /* ---------- generic form modal ---------- */
