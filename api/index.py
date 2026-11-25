@@ -11,7 +11,7 @@ from psycopg.rows import dict_row
 from fastapi import FastAPI, Request, HTTPException, Depends, Response
 from fastapi.responses import HTMLResponse, JSONResponse
 
-BUILD = "C02"
+BUILD = "C03"
 DB_URL = os.environ.get("DATABASE_URL", "")
 SECRET = os.environ.get("SECRET_KEY", "change-me-in-vercel")
 COOKIE = "crs_session"
@@ -768,17 +768,17 @@ def num(v):
 PRINT_CSS = """<style>
 *{box-sizing:border-box}body{font-family:Arial,Helvetica,sans-serif;color:#1d1d1f;margin:0;font-size:12px}
 .page{max-width:820px;margin:20px auto;padding:28px;background:#fff}
-.hd{display:flex;justify-content:space-between;align-items:center;border-bottom:3px solid #002654;padding-bottom:12px}
+.hd{display:flex;justify-content:space-between;align-items:center;border-bottom:3px solid #4C6F87;padding-bottom:12px}
 .hd img{height:54px}.hd .co{text-align:right;font-size:11px;line-height:1.5;color:#444}
-h1{font-size:18px;color:#002654;margin:16px 0 4px;letter-spacing:.5px}
+h1{font-size:18px;color:#15181B;margin:16px 0 4px;letter-spacing:.5px}
 .meta{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:12px 0}.box{border:1px solid #d5dae3;padding:10px;border-radius:4px}
-.box b{color:#002654}table{width:100%;border-collapse:collapse;margin-top:8px}
-th{background:#002654;color:#fff;padding:7px;font-size:11px;text-align:left}td{border-bottom:1px solid #e3e6ec;padding:6px 7px}
-.r{text-align:right}.tot td{border:none;padding:4px 7px}.tot .g td{font-weight:bold;font-size:14px;color:#002654;border-top:2px solid #002654}
+.box b{color:#4C6F87}table{width:100%;border-collapse:collapse;margin-top:8px}
+th{background:#4C6F87;color:#fff;padding:7px;font-size:11px;text-align:left}td{border-bottom:1px solid #e3e6ec;padding:6px 7px}
+.r{text-align:right}.tot td{border:none;padding:4px 7px}.tot .g td{font-weight:bold;font-size:14px;color:#4C6F87;border-top:2px solid #4C6F87}
 .terms{white-space:pre-line;font-size:11px;color:#444;margin-top:16px}.sig{display:flex;justify-content:space-between;margin-top:50px}
-.bar{height:4px;background:#E19619;margin-top:24px}
+.bar{height:4px;background:#A5A7A9;margin-top:24px}
 @media print{.noprint{display:none}.page{margin:0;padding:10px}}
-.noprint{text-align:center;margin:14px}.noprint button{background:#002654;color:#fff;border:0;padding:9px 22px;border-radius:4px;cursor:pointer}
+.noprint{text-align:center;margin:14px}.noprint button{background:#4C6F87;color:#fff;border:0;padding:9px 22px;border-radius:4px;cursor:pointer}
 </style>"""
 
 
