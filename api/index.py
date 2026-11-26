@@ -2,7 +2,7 @@
 FastAPI + Neon Postgres, deployed on Vercel.
 Flow: Enquiry -> Quotation -> Sales Order (approval) -> Cutting Program -> Dispatch
 """
-import os, hmac, hashlib, time, json, secrets, datetime as dt, html, urllib.request, urllib.parse
+import os, re, hmac, hashlib, time, json, secrets, datetime as dt, html, urllib.request, urllib.parse
 from pathlib import Path
 from decimal import Decimal, ROUND_HALF_UP
 
@@ -11,7 +11,7 @@ from psycopg.rows import dict_row
 from fastapi import FastAPI, Request, HTTPException, Depends, Response
 from fastapi.responses import HTMLResponse, JSONResponse
 
-BUILD = "C05"
+BUILD = "C06"
 DB_URL = os.environ.get("DATABASE_URL", "")
 SECRET = os.environ.get("SECRET_KEY", "change-me-in-vercel")
 COOKIE = "crs_session"
@@ -244,32 +244,38 @@ async def login(request: Request, c=Depends(db)):
 
 
 
-# ---------------------------------------------------------------- forgot password (email code via Google Workspace SMTP)
-SMTP = {"host": os.environ.get("SMTP_HOST", "") or "smtp.gmail.com", "port": int(os.environ.get("SMTP_PORT", "") or 587),
-        "user": os.environ.get("SMTP_USER", ""), "password": os.environ.get("SMTP_PASSWORD", "").replace(" ", ""),
-        "from": os.environ.get("MAIL_FROM", "") or os.environ.get("SMTP_USER", "")}
-MAIL_READY = bool(SMTP["user"] and SMTP["password"])
+# ---------------------------------------------------------------- forgot password (6-digit code on WhatsApp via WATI)
+WATI_URL = os.environ.get("WATI_API_URL", "").rstrip("/")
+WATI_TOKEN = os.environ.get("WATI_TOKEN", "").strip()
+WATI_OTP_TEMPLATE = os.environ.get("WATI_OTP_TEMPLATE", "").strip() or "otp_password2"
+WA_READY = bool(WATI_URL and WATI_TOKEN)
+NOT_SET = "Password reset on WhatsApp is not set up yet. Ask your admin to reset your password in Admin > Users."
 
 
-def send_mail(to, subject, html_body):
-    import smtplib
-    from email.message import EmailMessage
-    from email.utils import formataddr
-    if not MAIL_READY:
-        raise HTTPException(503, "Password reset by email is not set up yet. Ask your admin to reset your password in Admin > Users.")
-    m = EmailMessage()
-    m["Subject"], m["From"], m["To"] = subject, formataddr(("Crayon Roofings & Structures", SMTP["from"])), to
-    m.set_content("Your password reset code is in the HTML part of this email.")
-    m.add_alternative(html_body, subtype="html")
+def wa_number(mobile):
+    d = re.sub(r"\D", "", mobile or "")
+    if len(d) == 10:
+        d = "91" + d
+    elif len(d) == 11 and d.startswith("0"):
+        d = "91" + d[1:]
+    return d if len(d) == 12 and d.startswith("91") else ""
+
+
+def send_wa_code(number, code):
+    if not WA_READY:
+        raise HTTPException(503, NOT_SET)
+    tok = WATI_TOKEN if WATI_TOKEN.lower().startswith("bearer ") else "Bearer " + WATI_TOKEN
+    body = json.dumps({"template_name": WATI_OTP_TEMPLATE, "broadcast_name": "crayon_app_reset",
+                       "parameters": [{"name": "1", "value": code}]}).encode()
+    req = urllib.request.Request(f"{WATI_URL}/api/v1/sendTemplateMessage?whatsappNumber={number}", data=body,
+                                 method="POST", headers={"Authorization": tok, "Content-Type": "application/json"})
     try:
-        with smtplib.SMTP(SMTP["host"], SMTP["port"], timeout=15) as s:
-            s.starttls()
-            s.login(SMTP["user"], SMTP["password"])
-            s.send_message(m)
-    except smtplib.SMTPAuthenticationError:
-        raise HTTPException(502, "Email login failed - check SMTP_USER / SMTP_PASSWORD (Google App Password) in Vercel.")
+        with urllib.request.urlopen(req, timeout=15) as r:
+            j = json.loads(r.read() or b"{}")
     except Exception as e:
-        raise HTTPException(502, f"Could not send the email ({type(e).__name__}). Try again or ask your admin.")
+        raise HTTPException(502, f"Could not send the WhatsApp code ({type(e).__name__}). Try again or ask your admin.")
+    if j.get("result") is False or j.get("validWhatsAppNumber") is False:
+        raise HTTPException(502, "WhatsApp could not deliver to the mobile number on your account. Ask your admin to check it.")
 
 
 def _code_hash(uid, code):
@@ -282,25 +288,24 @@ async def forgot(request: Request, c=Depends(db)):
     email = ((await request.json()).get("email") or "").strip().lower()
     if not email:
         raise HTTPException(400, "Enter your email")
-    if not MAIL_READY:
-        raise HTTPException(503, "Password reset by email is not set up yet. Ask your admin to reset your password in Admin > Users.")
-    u = c.execute("SELECT id,name,email FROM users WHERE email=%s AND active", (email,)).fetchone()
-    if u:
-        recent = c.execute("SELECT count(*) n FROM password_resets WHERE user_id=%s AND created_at > now() - interval '15 minutes'",
-                           (u["id"],)).fetchone()["n"]
-        if recent >= 3:
-            raise HTTPException(429, "Too many requests. Please wait 15 minutes and try again.")
-        code = f"{secrets.randbelow(1_000_000):06d}"
-        c.execute("UPDATE password_resets SET used=TRUE WHERE user_id=%s AND NOT used", (u["id"],))
-        c.execute("INSERT INTO password_resets(user_id,code_hash,expires_at) VALUES(%s,%s,now()+interval '10 minutes')",
-                  (u["id"], _code_hash(u["id"], code)))
-        send_mail(u["email"], "Crayon app - password reset code",
-                  f"<div style='font-family:Arial,sans-serif;font-size:14px;color:#15181B'>Hi {E(u['name'])},<br><br>"
-                  f"Your password reset code is:<br><div style='font-size:28px;font-weight:bold;letter-spacing:6px;"
-                  f"color:#4C6F87;margin:14px 0'>{code}</div>It is valid for 10 minutes. If you did not ask for this, "
-                  f"ignore this email.<br><br>Crayon Roofings &amp; Structures</div>")
-    # same reply whether or not the email exists, so accounts can't be guessed
-    return {"ok": True, "message": "If this email is registered, a 6-digit code has been sent to it."}
+    if not WA_READY:
+        raise HTTPException(503, NOT_SET)
+    u = c.execute("SELECT id,name,mobile FROM users WHERE email=%s AND active", (email,)).fetchone()
+    if not u:
+        raise HTTPException(404, "No active user with this email")
+    num = wa_number(u["mobile"])
+    if not num:
+        raise HTTPException(400, "No valid mobile number on your account. Ask your admin to add it in Admin > Users.")
+    recent = c.execute("SELECT count(*) n FROM password_resets WHERE user_id=%s AND created_at > now() - interval '15 minutes'",
+                       (u["id"],)).fetchone()["n"]
+    if recent >= 3:
+        raise HTTPException(429, "Too many requests. Please wait 15 minutes and try again.")
+    code = f"{secrets.randbelow(1_000_000):06d}"
+    send_wa_code(num, code)
+    c.execute("UPDATE password_resets SET used=TRUE WHERE user_id=%s AND NOT used", (u["id"],))
+    c.execute("INSERT INTO password_resets(user_id,code_hash,expires_at) VALUES(%s,%s,now()+interval '10 minutes')",
+              (u["id"], _code_hash(u["id"], code)))
+    return {"ok": True, "message": f"A 6-digit code has been sent to your WhatsApp (******{num[-4:]})."}
 
 
 @app.post("/api/reset")
@@ -317,7 +322,7 @@ async def reset_pw(request: Request, c=Depends(db)):
         raise HTTPException(400, "Code expired or not valid. Request a new code.")
     if not hmac.compare_digest(r["code_hash"], _code_hash(u["id"], code)):
         c.execute("UPDATE password_resets SET attempts=attempts+1 WHERE id=%s", (r["id"],))
-        raise HTTPException(400, "Wrong code. Please check the email and try again.")
+        raise HTTPException(400, "Wrong code. Please check the WhatsApp message and try again.")
     c.execute("UPDATE password_resets SET used=TRUE WHERE id=%s", (r["id"],))
     c.execute("UPDATE users SET pw_hash=%s WHERE id=%s", (hash_pw(new), u["id"]))
     return {"ok": True}

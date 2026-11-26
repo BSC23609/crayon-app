@@ -63,7 +63,7 @@ table.t{width:100%;border-collapse:collapse;background:#fff;border:1px solid var
 <button class="btn" style="width:100%" onclick="doLogin()">Log in</button>
 <a class="lnk" onclick="fpStep(1)">Forgot password?</a></div>
 <div id="fbox" style="display:none"><h4 style="margin:0 0 6px;color:var(--ink)">Reset password</h4>
-<p class="mut" id="fmsg" style="margin:0 0 12px">Enter your login email. We'll email you a 6-digit code.</p>
+<p class="mut" id="fmsg" style="margin:0 0 12px">Enter your login email. We'll send a 6-digit code to your registered WhatsApp number.</p>
 <input id="fem" placeholder="Email"><div id="fstep2" style="display:none"><br><input id="fcode" placeholder="6-digit code" maxlength="6" inputmode="numeric"><br><br>
 <input id="fpw" type="password" placeholder="New password (min 6 characters)"><br><br><input id="fpw2" type="password" placeholder="Confirm new password"></div><div style="height:12px"></div>
 <button class="btn" style="width:100%" id="fbtn" onclick="fpSend()">Send code</button>
@@ -102,7 +102,7 @@ async function doLogin(){await api('/api/login',{method:'POST',body:{email:$('#l
 $('#lpw').addEventListener('keydown',e=>{if(e.key==='Enter')doLogin()});
 function fpStep(n){$('#lbox').style.display=n?'none':'block';$('#fbox').style.display=n?'block':'none';
  if(n){$('#fem').value=$('#lem').value;$('#fstep2').style.display='none';$('#fem').disabled=false;$('#fbtn').textContent='Send code';$('#fbtn').onclick=fpSend;
- $('#fmsg').textContent="Enter your login email. We'll email you a 6-digit code."}}
+ $('#fmsg').textContent="Enter your login email. We'll send a 6-digit code to your registered WhatsApp number."}}
 async function fpSend(){const em=$('#fem').value.trim();if(!em)return toast('Enter your email',1);
  $('#fbtn').disabled=true;try{const r=await post('/api/forgot',{email:em});$('#fmsg').textContent=r.message+' Enter it below with your new password.';
  $('#fem').disabled=true;$('#fstep2').style.display='block';$('#fbtn').textContent='Reset password';$('#fbtn').onclick=fpReset;$('#fcode').focus()}finally{$('#fbtn').disabled=false}}

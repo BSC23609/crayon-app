@@ -23,7 +23,7 @@ vercel.json         routing for Vercel
    - `DATABASE_URL`: the Neon connection string
    - `SECRET_KEY`: any long random text
    - `ADMIN_EMAIL` / `ADMIN_PASSWORD`: the first admin login. This account is created automatically on the first visit.
-   - `SMTP_USER`, `SMTP_PASSWORD`: needed for **Forgot password** emails, which are sent through Google Workspace (Gmail SMTP). `SMTP_USER` is the sending mailbox, e.g. info@crayonroofings.com. `SMTP_PASSWORD` is a Google **App Password** for that mailbox, not its normal password. If these aren't set, users are told to ask their admin, who can reset passwords in Admin → Users.
+   - `WATI_API_URL`, `WATI_TOKEN`: needed for **Forgot password**. The 6-digit code is sent on WhatsApp through WATI using the `otp_password2` template, which you can change with `WATI_OTP_TEMPLATE`. It goes to the mobile number saved on the user in Admin → Users. If these aren't set, users are told to ask their admin, who can reset passwords in Admin → Users.
 4. Deploy, then open the site. Tables and sample products are created automatically.
 5. **Domain:** Vercel → Settings → Domains → add `app.crayonroofings.com`, then add the CNAME record it shows (`app` → `cname.vercel-dns.com`) in the crayonroofings.com DNS.
 
