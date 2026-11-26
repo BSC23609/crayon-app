@@ -3,13 +3,13 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Crayon Sales | Sales to Dispatch</title>
+<title>Crayon Roofings &amp; Structures</title>
 <link rel="icon" href="/logo.png">
 <style>
 :root{--navy:#4C6F87;--navy2:#3A5870;--ink:#15181B;--steel:#A5A7A9;--amber:#8FB4CE;--bg:#F3F6F8;--line:#dfe4e8;--txt:#1d1d1f;--mut:#6b7280;--ok:#15803d;--bad:#b91c1c}
 *{box-sizing:border-box}body{margin:0;font-family:Inter,Segoe UI,Arial,sans-serif;background:var(--bg);color:var(--txt);font-size:14px}
 a{color:var(--navy2)}button{font:inherit}
-#login{display:flex;min-height:100vh;align-items:center;justify-content:center;background:linear-gradient(160deg,#15181B 0 38%,#F3F6F8 38%)}#login .card{border-top:4px solid var(--navy);box-shadow:0 10px 30px rgba(0,0,0,.12)}
+#login .lnk{display:block;margin-top:12px;font-size:13px;color:var(--navy);cursor:pointer}#login .lnk:hover{text-decoration:underline}#login{display:flex;min-height:100vh;align-items:center;justify-content:center;background:linear-gradient(160deg,#15181B 0 38%,#F3F6F8 38%)}#login .card{border-top:4px solid var(--navy);box-shadow:0 10px 30px rgba(0,0,0,.12)}
 .card{background:#fff;border:1px solid var(--line);border-radius:10px;padding:20px}
 #login .card{width:340px;text-align:center}#login img{height:52px;margin-bottom:14px}
 #app{display:none;min-height:100vh}
@@ -57,10 +57,17 @@ table.t{width:100%;border-collapse:collapse;background:#fff;border:1px solid var
 </style>
 </head>
 <body>
-<div id="login"><div class="card"><img src="/logo.png" alt="Crayon"><h3 style="color:var(--navy);margin:0 0 14px">Sales to Dispatch</h3>
-<input id="lem" placeholder="Email" autocomplete="username"><br><br>
+<div id="login"><div class="card"><img src="/logo.png" alt="Crayon">
+<div id="lbox"><input id="lem" placeholder="Email" autocomplete="username"><br><br>
 <input id="lpw" type="password" placeholder="Password" autocomplete="current-password"><br><br>
-<button class="btn" style="width:100%" onclick="doLogin()">Log in</button></div></div>
+<button class="btn" style="width:100%" onclick="doLogin()">Log in</button>
+<a class="lnk" onclick="fpStep(1)">Forgot password?</a></div>
+<div id="fbox" style="display:none"><h4 style="margin:0 0 6px;color:var(--ink)">Reset password</h4>
+<p class="mut" id="fmsg" style="margin:0 0 12px">Enter your login email. We'll email you a 6-digit code.</p>
+<input id="fem" placeholder="Email"><div id="fstep2" style="display:none"><br><input id="fcode" placeholder="6-digit code" maxlength="6" inputmode="numeric"><br><br>
+<input id="fpw" type="password" placeholder="New password (min 6 characters)"><br><br><input id="fpw2" type="password" placeholder="Confirm new password"></div><div style="height:12px"></div>
+<button class="btn" style="width:100%" id="fbtn" onclick="fpSend()">Send code</button>
+<a class="lnk" onclick="fpStep(0)">Back to login</a></div></div></div>
 
 <div id="app">
 <nav class="side"><div class="logo"><img src="/logo.png" alt="Crayon"></div>
@@ -93,6 +100,15 @@ const post=(u,b)=>api(u,{method:'POST',body:b||{}}),put=(u,b)=>api(u,{method:'PU
 function showLogin(){$('#login').style.display='flex';$('#app').style.display='none'}
 async function doLogin(){await api('/api/login',{method:'POST',body:{email:$('#lem').value,password:$('#lpw').value}});boot()}
 $('#lpw').addEventListener('keydown',e=>{if(e.key==='Enter')doLogin()});
+function fpStep(n){$('#lbox').style.display=n?'none':'block';$('#fbox').style.display=n?'block':'none';
+ if(n){$('#fem').value=$('#lem').value;$('#fstep2').style.display='none';$('#fem').disabled=false;$('#fbtn').textContent='Send code';$('#fbtn').onclick=fpSend;
+ $('#fmsg').textContent="Enter your login email. We'll email you a 6-digit code."}}
+async function fpSend(){const em=$('#fem').value.trim();if(!em)return toast('Enter your email',1);
+ $('#fbtn').disabled=true;try{const r=await post('/api/forgot',{email:em});$('#fmsg').textContent=r.message+' Enter it below with your new password.';
+ $('#fem').disabled=true;$('#fstep2').style.display='block';$('#fbtn').textContent='Reset password';$('#fbtn').onclick=fpReset;$('#fcode').focus()}finally{$('#fbtn').disabled=false}}
+async function fpReset(){if($('#fpw').value!==$('#fpw2').value)return toast('Passwords do not match',1);
+ await post('/api/reset',{email:$('#fem').value.trim(),code:$('#fcode').value,password:$('#fpw').value});
+ toast('Password changed. Please log in.');$('#lem').value=$('#fem').value;$('#lpw').value='';fpStep(0)}
 async function logout(){await post('/api/logout');showLogin()}
 async function boot(){try{ME=await api('/api/me')}catch(e){return showLogin()}
  $('#login').style.display='none';$('#app').style.display='block';$('#who').textContent=ME.name+' ('+ME.roles.join(', ')+')';$('#build').textContent=' · build '+ME.build;

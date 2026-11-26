@@ -2,7 +2,7 @@
 FastAPI + Neon Postgres, deployed on Vercel.
 Flow: Enquiry -> Quotation -> Sales Order (approval) -> Cutting Program -> Dispatch
 """
-import os, hmac, hashlib, time, datetime as dt, html
+import os, hmac, hashlib, time, json, secrets, datetime as dt, html, urllib.request, urllib.parse
 from pathlib import Path
 from decimal import Decimal, ROUND_HALF_UP
 
@@ -11,7 +11,7 @@ from psycopg.rows import dict_row
 from fastapi import FastAPI, Request, HTTPException, Depends, Response
 from fastapi.responses import HTMLResponse, JSONResponse
 
-BUILD = "C03"
+BUILD = "C04"
 DB_URL = os.environ.get("DATABASE_URL", "")
 SECRET = os.environ.get("SECRET_KEY", "change-me-in-vercel")
 COOKIE = "crs_session"
@@ -24,6 +24,9 @@ CREATE TABLE IF NOT EXISTS users (
   id SERIAL PRIMARY KEY, name TEXT NOT NULL, email TEXT UNIQUE NOT NULL, mobile TEXT,
   roles TEXT NOT NULL DEFAULT 'sales', pw_hash TEXT NOT NULL, active BOOLEAN DEFAULT TRUE,
   created_at TIMESTAMPTZ DEFAULT now());
+CREATE TABLE IF NOT EXISTS password_resets (
+  id SERIAL PRIMARY KEY, user_id INT REFERENCES users(id) ON DELETE CASCADE, code_hash TEXT NOT NULL,
+  expires_at TIMESTAMPTZ NOT NULL, attempts INT DEFAULT 0, used BOOLEAN DEFAULT FALSE, created_at TIMESTAMPTZ DEFAULT now());
 CREATE TABLE IF NOT EXISTS counters (key TEXT PRIMARY KEY, val INT NOT NULL DEFAULT 0);
 CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, val TEXT);
 CREATE TABLE IF NOT EXISTS customers (
@@ -238,6 +241,83 @@ async def login(request: Request, c=Depends(db)):
     r.set_cookie(COOKIE, make_token(u["id"]), max_age=7 * 86400, httponly=True, samesite="lax",
                  secure=request.url.scheme == "https")
     return r
+
+
+
+# ---------------------------------------------------------------- forgot password (email OTP via Microsoft Graph)
+GRAPH = {k: os.environ.get(k, "") for k in ("GRAPH_TENANT_ID", "GRAPH_CLIENT_ID", "GRAPH_CLIENT_SECRET", "MAIL_FROM")}
+
+
+def _http_json(url, data, headers):
+    req = urllib.request.Request(url, data=data, headers=headers, method="POST")
+    with urllib.request.urlopen(req, timeout=15) as r:
+        body = r.read()
+        return json.loads(body) if body else {}
+
+
+def send_mail(to, subject, html_body):
+    if not all(GRAPH.values()):
+        raise HTTPException(503, "Password reset by email is not set up yet. Ask your admin to reset your password in Admin > Users.")
+    tok = _http_json(f"https://login.microsoftonline.com/{GRAPH['GRAPH_TENANT_ID']}/oauth2/v2.0/token",
+                     urllib.parse.urlencode({"grant_type": "client_credentials", "client_id": GRAPH["GRAPH_CLIENT_ID"],
+                                             "client_secret": GRAPH["GRAPH_CLIENT_SECRET"],
+                                             "scope": "https://graph.microsoft.com/.default"}).encode(),
+                     {"Content-Type": "application/x-www-form-urlencoded"})["access_token"]
+    msg = {"message": {"subject": subject, "body": {"contentType": "HTML", "content": html_body},
+                       "toRecipients": [{"emailAddress": {"address": to}}]}, "saveToSentItems": False}
+    _http_json(f"https://graph.microsoft.com/v1.0/users/{GRAPH['MAIL_FROM']}/sendMail", json.dumps(msg).encode(),
+               {"Authorization": f"Bearer {tok}", "Content-Type": "application/json"})
+
+
+def _code_hash(uid, code):
+    return hmac.new(SECRET.encode(), f"reset:{uid}:{code}".encode(), "sha256").hexdigest()
+
+
+@app.post("/api/forgot")
+async def forgot(request: Request, c=Depends(db)):
+    ensure_schema(c)
+    email = ((await request.json()).get("email") or "").strip().lower()
+    if not email:
+        raise HTTPException(400, "Enter your email")
+    if not all(GRAPH.values()):
+        raise HTTPException(503, "Password reset by email is not set up yet. Ask your admin to reset your password in Admin > Users.")
+    u = c.execute("SELECT id,name,email FROM users WHERE email=%s AND active", (email,)).fetchone()
+    if u:
+        recent = c.execute("SELECT count(*) n FROM password_resets WHERE user_id=%s AND created_at > now() - interval '15 minutes'",
+                           (u["id"],)).fetchone()["n"]
+        if recent >= 3:
+            raise HTTPException(429, "Too many requests. Please wait 15 minutes and try again.")
+        code = f"{secrets.randbelow(1_000_000):06d}"
+        c.execute("UPDATE password_resets SET used=TRUE WHERE user_id=%s AND NOT used", (u["id"],))
+        c.execute("INSERT INTO password_resets(user_id,code_hash,expires_at) VALUES(%s,%s,now()+interval '10 minutes')",
+                  (u["id"], _code_hash(u["id"], code)))
+        send_mail(u["email"], "Crayon app - password reset code",
+                  f"<div style='font-family:Arial,sans-serif;font-size:14px;color:#15181B'>Hi {E(u['name'])},<br><br>"
+                  f"Your password reset code is:<br><div style='font-size:28px;font-weight:bold;letter-spacing:6px;"
+                  f"color:#4C6F87;margin:14px 0'>{code}</div>It is valid for 10 minutes. If you did not ask for this, "
+                  f"ignore this email.<br><br>Crayon Roofings &amp; Structures</div>")
+    # same reply whether or not the email exists, so accounts can't be guessed
+    return {"ok": True, "message": "If this email is registered, a 6-digit code has been sent to it."}
+
+
+@app.post("/api/reset")
+async def reset_pw(request: Request, c=Depends(db)):
+    ensure_schema(c)
+    b = await request.json()
+    email, code, new = (b.get("email") or "").strip().lower(), (b.get("code") or "").strip(), b.get("password") or ""
+    if len(new) < 6:
+        raise HTTPException(400, "New password must be at least 6 characters")
+    u = c.execute("SELECT id FROM users WHERE email=%s AND active", (email,)).fetchone()
+    r = u and c.execute("SELECT * FROM password_resets WHERE user_id=%s AND NOT used AND expires_at>now() "
+                        "ORDER BY id DESC LIMIT 1", (u["id"],)).fetchone()
+    if not r or r["attempts"] >= 5:
+        raise HTTPException(400, "Code expired or not valid. Request a new code.")
+    if not hmac.compare_digest(r["code_hash"], _code_hash(u["id"], code)):
+        c.execute("UPDATE password_resets SET attempts=attempts+1 WHERE id=%s", (r["id"],))
+        raise HTTPException(400, "Wrong code. Please check the email and try again.")
+    c.execute("UPDATE password_resets SET used=TRUE WHERE id=%s", (r["id"],))
+    c.execute("UPDATE users SET pw_hash=%s WHERE id=%s", (hash_pw(new), u["id"]))
+    return {"ok": True}
 
 
 @app.post("/api/logout")

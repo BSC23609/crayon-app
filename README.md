@@ -4,7 +4,7 @@ The sales-to-dispatch app for Crayon Roofings & Structures, at **app.crayonroofi
 
 **Flow:** Enquiry → Quotation → Sales Order (approval) → Cutting Program → Dispatch
 
-**Stack:** FastAPI (Python) + Neon Postgres, hosted on Vercel. Build **C01**.
+**Stack:** FastAPI (Python) + Neon Postgres, hosted on Vercel. Build **C04**.
 
 ## Folder layout
 ```
@@ -23,6 +23,7 @@ vercel.json         routing for Vercel
    - `DATABASE_URL`: the Neon connection string
    - `SECRET_KEY`: any long random text
    - `ADMIN_EMAIL` / `ADMIN_PASSWORD`: the first admin login. This account is created automatically on the first visit.
+   - `GRAPH_TENANT_ID`, `GRAPH_CLIENT_ID`, `GRAPH_CLIENT_SECRET`, `MAIL_FROM`: needed for **Forgot password** emails. Use the group's Azure app, which must have the Mail.Send application permission. `MAIL_FROM` is the mailbox the code is sent from. If these aren't set, users are told to ask their admin, who can reset passwords in Admin → Users.
 4. Deploy, then open the site. Tables and sample products are created automatically.
 5. **Domain:** Vercel → Settings → Domains → add `app.crayonroofings.com`, then add the CNAME record it shows (`app` → `cname.vercel-dns.com`) in the crayonroofings.com DNS.
 
