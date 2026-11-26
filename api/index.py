@@ -2,7 +2,7 @@
 FastAPI + Neon Postgres, deployed on Vercel.
 Flow: Enquiry -> Quotation -> Sales Order (approval) -> Cutting Program -> Dispatch
 """
-import os, re, hmac, hashlib, time, json, secrets, datetime as dt, html, urllib.request, urllib.parse
+import os, re, hmac, urllib.error, hashlib, time, json, secrets, datetime as dt, html, urllib.request, urllib.parse
 from pathlib import Path
 from decimal import Decimal, ROUND_HALF_UP
 
@@ -11,7 +11,7 @@ from psycopg.rows import dict_row
 from fastapi import FastAPI, Request, HTTPException, Depends, Response
 from fastapi.responses import HTMLResponse, JSONResponse
 
-BUILD = "C06"
+BUILD = "C07"
 DB_URL = os.environ.get("DATABASE_URL", "")
 SECRET = os.environ.get("SECRET_KEY", "change-me-in-vercel")
 COOKIE = "crs_session"
@@ -245,7 +245,7 @@ async def login(request: Request, c=Depends(db)):
 
 
 # ---------------------------------------------------------------- forgot password (6-digit code on WhatsApp via WATI)
-WATI_URL = os.environ.get("WATI_API_URL", "").rstrip("/")
+WATI_URL = re.sub(r"/api/v1/?$", "", os.environ.get("WATI_API_URL", "").strip().rstrip("/"))
 WATI_TOKEN = os.environ.get("WATI_TOKEN", "").strip()
 WATI_OTP_TEMPLATE = os.environ.get("WATI_OTP_TEMPLATE", "").strip() or "otp_password2"
 WA_READY = bool(WATI_URL and WATI_TOKEN)
@@ -272,9 +272,17 @@ def send_wa_code(number, code):
     try:
         with urllib.request.urlopen(req, timeout=15) as r:
             j = json.loads(r.read() or b"{}")
+    except urllib.error.HTTPError as e:
+        detail = (e.read() or b"").decode("utf-8", "ignore").strip()[:200]
+        hint = {401: "WATI_TOKEN is wrong or expired", 403: "WATI_TOKEN is wrong or expired",
+                404: "WATI_API_URL is wrong (use the API Endpoint from WATI > API Docs)"}.get(e.code, "")
+        raise HTTPException(502, f"WhatsApp code not sent - WATI replied {e.code}" + (f" ({hint})" if hint else "")
+                            + (f": {detail}" if detail else ""))
     except Exception as e:
-        raise HTTPException(502, f"Could not send the WhatsApp code ({type(e).__name__}). Try again or ask your admin.")
-    if j.get("result") is False or j.get("validWhatsAppNumber") is False:
+        raise HTTPException(502, f"Could not reach WATI ({type(e).__name__}: {str(e)[:120]}). Check WATI_API_URL.")
+    if j.get("result") is False and j.get("validWhatsAppNumber") is not False:
+        raise HTTPException(502, "WATI did not send the code: " + str(j.get("info") or j.get("message") or j)[:200])
+    if j.get("validWhatsAppNumber") is False:
         raise HTTPException(502, "WhatsApp could not deliver to the mobile number on your account. Ask your admin to check it.")
 
 
