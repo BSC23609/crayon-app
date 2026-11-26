@@ -11,7 +11,7 @@ from psycopg.rows import dict_row
 from fastapi import FastAPI, Request, HTTPException, Depends, Response
 from fastapi.responses import HTMLResponse, JSONResponse
 
-BUILD = "C04"
+BUILD = "C05"
 DB_URL = os.environ.get("DATABASE_URL", "")
 SECRET = os.environ.get("SECRET_KEY", "change-me-in-vercel")
 COOKIE = "crs_session"
@@ -244,29 +244,32 @@ async def login(request: Request, c=Depends(db)):
 
 
 
-# ---------------------------------------------------------------- forgot password (email OTP via Microsoft Graph)
-GRAPH = {k: os.environ.get(k, "") for k in ("GRAPH_TENANT_ID", "GRAPH_CLIENT_ID", "GRAPH_CLIENT_SECRET", "MAIL_FROM")}
-
-
-def _http_json(url, data, headers):
-    req = urllib.request.Request(url, data=data, headers=headers, method="POST")
-    with urllib.request.urlopen(req, timeout=15) as r:
-        body = r.read()
-        return json.loads(body) if body else {}
+# ---------------------------------------------------------------- forgot password (email code via Google Workspace SMTP)
+SMTP = {"host": os.environ.get("SMTP_HOST", "") or "smtp.gmail.com", "port": int(os.environ.get("SMTP_PORT", "") or 587),
+        "user": os.environ.get("SMTP_USER", ""), "password": os.environ.get("SMTP_PASSWORD", "").replace(" ", ""),
+        "from": os.environ.get("MAIL_FROM", "") or os.environ.get("SMTP_USER", "")}
+MAIL_READY = bool(SMTP["user"] and SMTP["password"])
 
 
 def send_mail(to, subject, html_body):
-    if not all(GRAPH.values()):
+    import smtplib
+    from email.message import EmailMessage
+    from email.utils import formataddr
+    if not MAIL_READY:
         raise HTTPException(503, "Password reset by email is not set up yet. Ask your admin to reset your password in Admin > Users.")
-    tok = _http_json(f"https://login.microsoftonline.com/{GRAPH['GRAPH_TENANT_ID']}/oauth2/v2.0/token",
-                     urllib.parse.urlencode({"grant_type": "client_credentials", "client_id": GRAPH["GRAPH_CLIENT_ID"],
-                                             "client_secret": GRAPH["GRAPH_CLIENT_SECRET"],
-                                             "scope": "https://graph.microsoft.com/.default"}).encode(),
-                     {"Content-Type": "application/x-www-form-urlencoded"})["access_token"]
-    msg = {"message": {"subject": subject, "body": {"contentType": "HTML", "content": html_body},
-                       "toRecipients": [{"emailAddress": {"address": to}}]}, "saveToSentItems": False}
-    _http_json(f"https://graph.microsoft.com/v1.0/users/{GRAPH['MAIL_FROM']}/sendMail", json.dumps(msg).encode(),
-               {"Authorization": f"Bearer {tok}", "Content-Type": "application/json"})
+    m = EmailMessage()
+    m["Subject"], m["From"], m["To"] = subject, formataddr(("Crayon Roofings & Structures", SMTP["from"])), to
+    m.set_content("Your password reset code is in the HTML part of this email.")
+    m.add_alternative(html_body, subtype="html")
+    try:
+        with smtplib.SMTP(SMTP["host"], SMTP["port"], timeout=15) as s:
+            s.starttls()
+            s.login(SMTP["user"], SMTP["password"])
+            s.send_message(m)
+    except smtplib.SMTPAuthenticationError:
+        raise HTTPException(502, "Email login failed - check SMTP_USER / SMTP_PASSWORD (Google App Password) in Vercel.")
+    except Exception as e:
+        raise HTTPException(502, f"Could not send the email ({type(e).__name__}). Try again or ask your admin.")
 
 
 def _code_hash(uid, code):
@@ -279,7 +282,7 @@ async def forgot(request: Request, c=Depends(db)):
     email = ((await request.json()).get("email") or "").strip().lower()
     if not email:
         raise HTTPException(400, "Enter your email")
-    if not all(GRAPH.values()):
+    if not MAIL_READY:
         raise HTTPException(503, "Password reset by email is not set up yet. Ask your admin to reset your password in Admin > Users.")
     u = c.execute("SELECT id,name,email FROM users WHERE email=%s AND active", (email,)).fetchone()
     if u:
