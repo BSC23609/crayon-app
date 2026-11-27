@@ -58,6 +58,8 @@ table.t{width:100%;border-collapse:collapse;background:#fff;border:1px solid var
 .tbar{display:flex;align-items:center;gap:12px;background:#fff;border:1px solid var(--line);border-left:4px solid var(--steel);border-radius:8px;padding:12px 14px;margin-bottom:14px}.tbar.on{border-left-color:var(--ok);background:#f3fbf6}
 .dot{width:12px;height:12px;border-radius:50%;background:var(--ok);box-shadow:0 0 0 0 rgba(21,128,61,.6);animation:pulse 1.6s infinite;flex:none}@keyframes pulse{70%{box-shadow:0 0 0 10px rgba(21,128,61,0)}100%{box-shadow:0 0 0 0 rgba(21,128,61,0)}}
 .pill.Running{background:#dcfce7;color:var(--ok)}
+.charts{display:grid;grid-template-columns:repeat(auto-fit,minmax(380px,1fr));gap:14px;margin-bottom:6px}.cbox{padding:14px 16px}.ctitle{font-weight:700;color:var(--ink)}.csub{font-size:12px;color:var(--mut);margin-bottom:8px}
+.chtip{position:fixed;display:none;z-index:60;background:#15181B;color:#fff;font-size:12px;line-height:1.45;padding:7px 10px;border-radius:6px;pointer-events:none;box-shadow:0 4px 14px rgba(0,0,0,.2)}
 .warn{background:#fff3dc;border:1px solid #f5d08a;padding:8px 12px;border-radius:6px;color:#7a4a00;margin:8px 0}
 @media(max-width:800px){.side{position:static;width:auto;flex-direction:row;overflow:auto}.mod{display:flex;align-items:center}.mitems{display:flex!important;border:0;margin:0}.side .logo,.side .foot{display:none}.main{margin:0;padding:14px}}
 </style>
@@ -97,7 +99,7 @@ const esc=v=>v==null?'':String(v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;'
 const inr=v=>Number(v||0).toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2});
 const n3=v=>{v=Number(v||0);return Number.isInteger(v)?v:v.toFixed(3).replace(/0+$/,'')};
 const pill=s=>`<span class="pill ${esc(s)}">${esc(s)}</span>`;
-const today=()=>new Date().toISOString().slice(0,10);
+const today=()=>{const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')};
 const has=(...r)=>ME&&(ME.roles.includes('admin')||r.some(x=>ME.roles.includes(x)));
 function toast(m,err){const t=$('#toast');t.textContent=m;t.className='toast'+(err?' err':'');t.style.display='block';clearTimeout(t._h);t._h=setTimeout(()=>t.style.display='none',3200)}
 async function api(url,opt={}){const r=await fetch(url,{headers:{'Content-Type':'application/json'},credentials:'same-origin',...opt,body:opt.body?JSON.stringify(opt.body):undefined});
@@ -409,9 +411,13 @@ async function travel(){const days=window._tDays??7,uid=window._tUser||'';const 
  const tot=rows.reduce((a,r)=>a+(+r.gps_km||0),0);
  $('#view').innerHTML=`<h2>Travel / Distance</h2><div id="tripbar"></div><div class="bar"><select style="width:auto" onchange="window._tDays=+this.value;travel()">${[[1,'Today'],[7,'Last 7 days'],[30,'Last 30 days'],[90,'Last 90 days'],[0,'All']].map(([v,t])=>`<option value="${v}" ${v===days?'selected':''}>${t}</option>`).join('')}</select>
  <select style="width:auto" onchange="window._tUser=this.value;travel()"><option value="">All salespeople</option>${USERS.map(x=>`<option value="${x.id}" ${String(x.id)===String(uid)?'selected':''}>${esc(x.name)}</option>`).join('')}</select>
- <span class="sp"></span><span class="mut">${rows.length} trips · <b>${km(tot)}</b> GPS distance</span></div><div id="tlist">${tripTable(rows)}</div>
+ <span class="sp"></span><span class="mut">${rows.length} trips · <b>${km(tot)}</b> GPS distance</span></div>
+ <div class="charts"><div class="card cbox"><div class="ctitle">Daily distance travelled</div><div class="csub">GPS km per day${uid?'':' (all salespeople)'}</div><div id="chDaily"></div></div>
+ <div class="card cbox"><div class="ctitle">Distance by salesperson</div><div class="csub">GPS km in the selected period</div><div id="chPerson"></div></div></div>
+ <div class="sec"><h4>Salesperson summary</h4><div id="tsum"></div></div>
+ <div class="sec"><h4>Trips</h4><div id="tlist">${tripTable(rows)}</div></div>
  <div class="mut" style="margin-top:10px">GPS km adds up the straight-line distance between recorded points, so it can read a little lower than the actual road distance. Enter odometer readings at the start and end of the trip to compare.</div>`;
- bindTrips('#tlist',rows);tripBar()}
+ bindTrips('#tlist',rows);tripBar();distCharts(rows,days)}
 function loadLeaflet(){if(window.L)return Promise.resolve();return new Promise((ok,no)=>{const c=document.createElement('link');c.rel='stylesheet';c.href='https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';document.head.appendChild(c);
  const j=document.createElement('script');j.src='https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';j.onload=ok;j.onerror=no;document.head.appendChild(j)})}
 async function tripView(id){const t=await api('/api/trips/'+id);const pts=t.points;const vis=pts.filter(p=>p.kind==='visit');
@@ -432,6 +438,50 @@ async function tripView(id){const t=await api('/api/trips/'+id);const pts=t.poin
   const col={start:'#15803d',end:'#b91c1c',visit:'#1d4ed8'};
   pts.forEach(p=>{if(p.kind==='track')return;L.circleMarker([+p.lat,+p.lng],{radius:8,color:'#fff',weight:2,fillColor:col[p.kind]||'#555',fillOpacity:1}).addTo(m).bindPopup(`<b>${({start:'Start',end:'End',visit:'Visit'})[p.kind]}</b> ${tm(p.ts)}<br>${esc(p.party||p.label||'')}`)});
   m.fitBounds(L.latLngBounds(ll).pad(.15),{maxZoom:15})}catch(e){$('#tmap').innerHTML='<div class="mut" style="padding:20px">Map could not load. Use "Open route in Google Maps".</div>'}}
+
+/* ---------- distance analysis charts (inline SVG, single hue) ---------- */
+const CH_BAR='#2F6A9E',CH_INK='#15181B',CH_MUT='#6b7280',CH_GRID='#e6eaee';
+function chTip(){let t=$('#chtip');if(!t){t=document.createElement('div');t.id='chtip';t.className='chtip';document.body.appendChild(t)}return t}
+function chHover(svg){svg.querySelectorAll('[data-tip]').forEach(el=>{el.addEventListener('mousemove',e=>{const t=chTip();t.innerHTML=el.dataset.tip;t.style.display='block';
+ const x=Math.min(e.clientX+14,innerWidth-t.offsetWidth-8);t.style.left=x+'px';t.style.top=(e.clientY-t.offsetHeight-12)+'px'});
+ el.addEventListener('mouseleave',()=>chTip().style.display='none');el.addEventListener('click',e=>{e.stopPropagation()})})}
+function niceMax(v){if(v<=0)return 10;const p=Math.pow(10,Math.floor(Math.log10(v))),n=v/p;return (n<=1?1:n<=2?2:n<=2.5?2.5:n<=5?5:10)*p}
+const iso=d=>d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+function distCharts(rows,days){
+ if($('#chtip'))$('#chtip').style.display='none';
+ // daily series: every date in range (zero-filled)
+ const byDay={};rows.forEach(r=>{byDay[r.trip_date]=byDay[r.trip_date]||{km:0,trips:0,visits:0};const b=byDay[r.trip_date];b.km+=+r.gps_km||0;b.trips++;b.visits+=+r.visits||0});
+ let dates=[];if(days>0){const t=new Date(today()+'T00:00:00');for(let i=Math.min(days,90)-1;i>=0;i--){const d=new Date(t);d.setDate(t.getDate()-i);dates.push(iso(d))}}
+ else dates=Object.keys(byDay).sort().slice(-60);
+ const W=560,H=240,L=44,R=10,T=14,B=34,pw=W-L-R,ph=H-T-B;
+ if(!rows.length){$('#chDaily').innerHTML=$('#chPerson').innerHTML='<div class="mut" style="padding:30px 0;text-align:center">No trips in this period.</div>';$('#tsum').innerHTML='';return}
+ const vals=dates.map(d=>(byDay[d]||{}).km||0),mx=niceMax(Math.max(...vals));
+ const n=dates.length,slot=pw/n,bw=Math.max(3,Math.min(36,slot*.62));
+ let g='';for(let i=0;i<=4;i++){const v=mx*i/4,y=T+ph-ph*i/4;g+=`<line x1="${L}" x2="${W-R}" y1="${y}" y2="${y}" stroke="${CH_GRID}"/><text x="${L-6}" y="${y+4}" text-anchor="end" font-size="10" fill="${CH_MUT}">${Math.round(v*10)/10}</text>`}
+ const every=Math.ceil(n/(n>14?8:n));let bars='',lbl='';
+ dates.forEach((d,i)=>{const v=vals[i],h=v>0?Math.max(2,ph*v/mx):0,x=L+slot*i+(slot-bw)/2,y=T+ph-h,b=byDay[d]||{trips:0,visits:0};
+  const dl=new Date(d+'T00:00:00').toLocaleDateString('en-IN',{day:'2-digit',month:'short'});
+  const tip=`<b>${dl}</b><br>${km(v)}<br>${b.trips} trip${b.trips==1?'':'s'} · ${b.visits} visit${b.visits==1?'':'s'}`;
+  if(h)bars+=`<path d="M${x},${T+ph}V${y+Math.min(4,h)}q0,-${Math.min(4,h)} ${Math.min(4,bw/2)},-${Math.min(4,h)}H${x+bw-Math.min(4,bw/2)}q${Math.min(4,bw/2)},0 ${Math.min(4,bw/2)},${Math.min(4,h)}V${T+ph}Z" fill="${CH_BAR}"/>`;
+  bars+=`<rect x="${L+slot*i}" y="${T}" width="${slot}" height="${ph}" fill="transparent" data-tip="${esc(tip)}" style="cursor:default"/>`;
+  if(i%every===0||i===n-1&&n<=14)lbl+=`<text x="${x+bw/2}" y="${H-B+16}" text-anchor="middle" font-size="10" fill="${CH_MUT}">${dl}</text>`});
+ const peak=vals.indexOf(Math.max(...vals));let peakLbl='';if(vals[peak]>0){const x=L+slot*peak+slot/2,y=T+ph-ph*vals[peak]/mx;peakLbl=`<text x="${x}" y="${Math.max(10,y-5)}" text-anchor="middle" font-size="10" font-weight="600" fill="${CH_INK}">${Math.round(vals[peak]*10)/10}</text>`}
+ $('#chDaily').innerHTML=`<svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="Daily GPS km">${g}<line x1="${L}" x2="${W-R}" y1="${T+ph}" y2="${T+ph}" stroke="#c9d0d6"/>${bars}${lbl}${peakLbl}<text x="12" y="${T+ph/2}" transform="rotate(-90 12 ${T+ph/2})" text-anchor="middle" font-size="10" fill="${CH_MUT}">km</text></svg>`;
+ chHover($('#chDaily svg'));
+ // per salesperson
+ const per={};rows.forEach(r=>{const k=r.salesperson||'-';per[k]=per[k]||{name:k,km:0,trips:0,visits:0,odo:0,odoTrips:0,hours:0};const p=per[k];p.km+=+r.gps_km||0;p.trips++;p.visits+=+r.visits||0;p.hours+=+r.hours||0;if(r.odo_km!=null){p.odo+=+r.odo_km;p.odoTrips++}});
+ const ps=Object.values(per).sort((a,b)=>b.km-a.km);const pmx=niceMax(ps[0].km),rh=30,PL=110,PR=60,PH=ps.length*rh+10,PW=560,pw2=PW-PL-PR;
+ let pb='';ps.forEach((p,i)=>{const y=6+i*rh,w=p.km>0?Math.max(2,pw2*p.km/pmx):0,bh=16;
+  const tip=`<b>${esc(p.name)}</b><br>${km(p.km)} GPS<br>${p.trips} trips · ${p.visits} visits<br>${p.visits?km(p.km/p.visits)+' per visit':'no visits'}`;
+  pb+=`<text x="${PL-8}" y="${y+bh/2+4}" text-anchor="end" font-size="11" fill="${CH_INK}">${esc(p.name.length>15?p.name.slice(0,14)+'…':p.name)}</text>`;
+  if(w)pb+=`<path d="M${PL},${y}H${PL+w-Math.min(4,w)}q${Math.min(4,w)},0 ${Math.min(4,w)},${Math.min(4,w)}V${y+bh-Math.min(4,w)}q0,${Math.min(4,w)} -${Math.min(4,w)},${Math.min(4,w)}H${PL}Z" fill="${CH_BAR}"/>`;
+  pb+=`<text x="${PL+w+6}" y="${y+bh/2+4}" font-size="11" fill="${CH_INK}">${Math.round(p.km*10)/10} km</text>`;
+  pb+=`<rect x="0" y="${y-6}" width="${PW}" height="${rh}" fill="transparent" data-tip="${esc(tip)}"/>`});
+ $('#chPerson').innerHTML=`<svg viewBox="0 0 ${PW} ${PH}" width="100%" role="img" aria-label="GPS km by salesperson"><line x1="${PL}" x2="${PL}" y1="0" y2="${PH-4}" stroke="#c9d0d6"/>${pb}</svg>`;
+ chHover($('#chPerson svg'));
+ $('#tsum').innerHTML=table([{l:'Salesperson',k:'name'},{l:'Trips',r:1,k:'trips'},{l:'Visits',r:1,k:'visits'},{l:'GPS km',r:1,f:p=>`<b>${km(p.km)}</b>`},
+  {l:'Odometer km',r:1,f:p=>p.odoTrips?km(p.odo)+` <span class="mut">(${p.odoTrips} trip${p.odoTrips==1?'':'s'})</span>`:''},{l:'Avg km / trip',r:1,f:p=>km(p.km/p.trips)},
+  {l:'Km per visit',r:1,f:p=>p.visits?km(p.km/p.visits):'-'},{l:'Time on road',r:1,f:p=>hm(p.hours)}],ps)}
 /* ---------- users & settings ---------- */
 const ROLES='admin, sales, approver, production, dispatch';
 async function users(){USERS=await api('/api/users');

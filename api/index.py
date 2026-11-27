@@ -11,7 +11,7 @@ from psycopg.rows import dict_row
 from fastapi import FastAPI, Request, HTTPException, Depends, Response
 from fastapi.responses import HTMLResponse, JSONResponse
 
-BUILD = "C09"
+BUILD = "C10"
 DB_URL = os.environ.get("DATABASE_URL", "")
 SECRET = os.environ.get("SECRET_KEY", "change-me-in-vercel")
 COOKIE = "crs_session"
@@ -929,7 +929,7 @@ def visits(mine: int = 0, lead_id: int = 0, days: int = 0, u=Depends(user), c=De
         q += " AND v.lead_id=%s"
         args.append(lead_id)
     if days:
-        q += " AND v.visit_date >= CURRENT_DATE - %s"
+        q += " AND v.visit_date >= CURRENT_DATE - (%s - 1)"
         args.append(days)
     return c.execute(q + " ORDER BY v.check_in DESC LIMIT 1000", args).fetchall()
 
@@ -1080,7 +1080,7 @@ TRIP_LIST = ("SELECT t.*, us.name salesperson, (SELECT count(*) FROM trip_points
 def trips(days: int = 30, mine: int = 0, user_id: int = 0, u=Depends(user), c=Depends(db)):
     q, args = TRIP_LIST, []
     if days:
-        q += " AND t.trip_date >= CURRENT_DATE - %s"
+        q += " AND t.trip_date >= CURRENT_DATE - (%s - 1)"
         args.append(days)
     if mine:
         q += " AND t.user_id=%s"
