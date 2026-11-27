@@ -52,6 +52,9 @@ table.t{width:100%;border-collapse:collapse;background:#fff;border:1px solid var
 .toast.err{background:var(--bad)}
 .tot{margin-left:auto;width:300px}.tot div{display:flex;justify-content:space-between;padding:3px 0}.tot .g{font-weight:700;color:var(--navy);border-top:2px solid var(--navy);margin-top:4px;padding-top:6px}
 .sec{margin-top:18px}.sec h4{color:var(--navy);margin:0 0 8px}
+.fsec{grid-column:1/-1;font-weight:700;color:var(--navy);border-bottom:1px solid var(--line);padding:8px 0 4px;margin-top:4px;font-size:13px;text-transform:uppercase;letter-spacing:.5px}
+.chks{display:flex;flex-wrap:wrap;gap:6px 14px}.chk{display:flex;align-items:center;gap:5px;font-size:13px;color:var(--txt);margin:0}.chk input{width:auto}
+.pill.Hot{background:#fee2e2;color:var(--bad)}.pill.Warm{background:#fff3dc;color:#9a5b00}.pill.Cold{background:#e0ecff;color:#1d4ed8}.pill.Converted,.pill.Qualified{background:#dcfce7;color:var(--ok)}
 .warn{background:#fff3dc;border:1px solid #f5d08a;padding:8px 12px;border-radius:6px;color:#7a4a00;margin:8px 0}
 @media(max-width:800px){.side{position:static;width:auto;flex-direction:row;overflow:auto}.mod{display:flex;align-items:center}.mitems{display:flex!important;border:0;margin:0}.side .logo,.side .foot{display:none}.main{margin:0;padding:14px}}
 </style>
@@ -71,6 +74,8 @@ table.t{width:100%;border-collapse:collapse;background:#fff;border:1px solid var
 
 <div id="app">
 <nav class="side"><div class="logo"><img src="/logo.png" alt="Crayon"></div>
+<div class="mod open" id="m_crm"><div class="mhd" onclick="this.parentNode.classList.toggle('open')"><span>Sales</span><i>&#9662;</i></div>
+<div class="mitems"><a data-v="sdash">Sales Dashboard</a><a data-v="leads">Leads</a><a data-v="visits">Visits</a></div></div>
 <div class="mod open" id="m_sales"><div class="mhd" onclick="this.parentNode.classList.toggle('open')"><span>Sales &amp; Dispatch</span><i>&#9662;</i></div>
 <div class="mitems"><a data-v="dash">Dashboard</a><a data-v="enq">Enquiries</a><a data-v="quote">Quotations</a><a data-v="order">Sales Orders</a>
 <a data-v="cut">Cutting Program</a><a data-v="disp">Dispatch</a><a data-v="cust">Customers</a><a data-v="prod">Products &amp; Rates</a></div></div>
@@ -119,18 +124,20 @@ document.querySelectorAll('.side a[data-v]').forEach(a=>a.onclick=()=>{location.
 window.onhashchange=route;
 function route(){const v=(location.hash.slice(1)||'dash').split('/')[0];document.querySelectorAll('.side a').forEach(a=>a.classList.toggle('on',a.dataset.v===v));
  const on=document.querySelector('.side a.on');if(on)on.closest('.mod').classList.add('open');
- ({dash,enq,quote,order,cut,disp,cust,prod,users,set}[v]||dash)()}
+ ({dash,enq,quote,order,cut,disp,cust,prod,users,set,sdash,leads,visits}[v]||dash)()}
 
 /* ---------- generic form modal ---------- */
 function field(f,val){const v=val??f.def??'';
+ if(f.type==='multi'){const sel=String(v||'').split(',').map(x=>x.trim());return `<div class="chks" id="f_${f.k}">${f.opts.map(o=>`<label class="chk"><input type="checkbox" value="${esc(o)}" ${sel.includes(o)?'checked':''}> ${esc(o)}</label>`).join('')}</div>`}
+ if(f.type==='section')return '';
  if(f.type==='select')return `<select id="f_${f.k}">${f.opts.map(o=>{const [ov,ol]=Array.isArray(o)?o:[o,o];return `<option value="${esc(ov)}" ${String(ov)===String(v)?'selected':''}>${esc(ol)}</option>`}).join('')}</select>`;
  if(f.type==='area')return `<textarea id="f_${f.k}">${esc(v)}</textarea>`;
  if(f.type==='check')return `<select id="f_${f.k}"><option value="true" ${v!==false?'selected':''}>Yes</option><option value="false" ${v===false?'selected':''}>No</option></select>`;
  return `<input id="f_${f.k}" type="${f.type||'text'}" value="${esc(v)}" ${f.step?`step="${f.step}"`:''}>`}
 function form(title,fields,row,onSave,extra=''){
- $('#mbody').innerHTML=`<h3>${title}</h3><div class="grid">${fields.map(f=>`<div style="${f.wide?'grid-column:1/-1':''}"><label>${f.l}</label>${field(f,row?.[f.k])}</div>`).join('')}</div>${extra}
+ $('#mbody').innerHTML=`<h3>${title}</h3><div class="grid">${fields.map(f=>f.type==='section'?`<div class="fsec">${f.l}</div>`:`<div style="${f.wide||f.type==='multi'?'grid-column:1/-1':''}"><label>${f.l}${f.req?' <b style="color:var(--bad)">*</b>':''}</label>${field(f,row?.[f.k])}</div>`).join('')}</div>${extra}
  <div class="mfoot"><button class="btn ghost" onclick="closeM()">Cancel</button><button class="btn" id="msave">Save</button></div>`;
- openM();$('#msave').onclick=async()=>{const b={};fields.forEach(f=>{let v=$('#f_'+f.k).value;if(f.type==='check')v=v==='true';b[f.k]=v});await onSave(b);}}
+ openM();$('#msave').onclick=async()=>{const b={};fields.forEach(f=>{if(f.type==='section')return;let v;if(f.type==='multi')v=[...document.querySelectorAll('#f_'+f.k+' input:checked')].map(x=>x.value).join(', ');else{v=$('#f_'+f.k).value;if(f.type==='check')v=v==='true'}b[f.k]=v});await onSave(b);}}
 function openM(){$('#modal').style.display='flex'}function closeM(){$('#modal').style.display='none'}
 const custOpts=()=>[['','-- select --'],...CUST.filter(c=>c.active!==false).map(c=>[c.id,c.name])];
 const userOpts=()=>[['','--'],...USERS.map(u=>[u.id,u.name])];
@@ -284,6 +291,82 @@ function dispForm(id){const o=window._order;const left=o.items.filter(i=>+i.pcs-
   b.items=[...document.querySelectorAll('.dpcs')].map(x=>({order_item_id:x.dataset.id,pcs:x.value})).filter(x=>+x.pcs>0);
   const d=await post(`/api/orders/${id}/dispatch`,b);toast('Dispatch '+d.dc_no+' created');window.open('/print/dc/'+d.id,'_blank');orderView(id);refresh()},extra)}
 
+
+/* ---------- SALES: dashboard, leads, visits ---------- */
+const L_ST=['New','Contacted','Visit Planned','Qualified','Converted','Lost'],PRIO=['Hot','Warm','Cold'];
+const CTYPE=['Industrial / Factory','Warehouse / Logistics','PEB / Steel building company','Contractor','Builder / Developer','Fabricator','Dealer / Retailer','Institution / Government','Individual / Residential','Other'];
+const LSRC=['Field visit','Phone call','WhatsApp','Walk-in','Reference','Website','IndiaMART / Online portal','Dealer','Existing customer','Exhibition','Other'];
+const PRODS=['Colour coated roofing sheets','Galvalume / GI sheets','Ridges & flashings','Accessories','Tata self-drilling screws','Tata welding electrodes','Tata grinding wheels','Purlins / structural','Other'];
+const VTYPE=['First visit','Follow-up visit','Site measurement','Quotation discussion','Order finalisation','Payment collection','Complaint / service','Relationship visit'];
+const VOUT=['Interested','Quote requested','Order confirmed','Negotiation','Call back later','Not interested','Payment received','Issue resolved'];
+async function sdash(){const d=await api('/api/sales-dashboard');const k=(l,v,a)=>`<div class="kpi ${a?'a':''}">${l}<b>${v}</b></div>`;
+ $('#view').innerHTML=`<h2>Sales Dashboard</h2><div class="bar"><span class="sp"></span>${has('sales')?'<button class="btn ghost" onclick="leadForm()">+ New lead</button><button class="btn amb" onclick="visitForm()">Mark visit</button>':''}</div>
+ <div class="kpis">${k('New leads this month',d.leads_month)}${k('Open leads',d.open_leads)}${k('Hot leads',d.hot_leads,1)}${k('Pipeline value (Rs)',inr(d.pipeline))}
+ ${k('Follow-ups due',d.followups_due,1)}${k('Visits today',d.visits_today)}${k('Visits this month',d.visits_month)}${k('Converted this month',d.converted_month)}</div>
+ <div class="sec"><h4>Follow-ups due today or overdue</h4>${table([{l:'Lead',k:'lead_no'},{l:'Company',k:'company'},{l:'Mobile',k:'mobile'},{l:'Priority',f:r=>pill(r.priority)},{l:'Status',f:r=>pill(r.status)},{l:'Follow-up',f:r=>`<b style="color:var(--bad)">${esc(r.next_follow_up)}</b>`},{l:'Owner',k:'owner'}],d.due,1)}</div>
+ <div class="sec"><h4>This month by salesperson</h4>${table([{l:'Salesperson',k:'name'},{l:'Leads added',r:1,k:'leads'},{l:'Visits',r:1,k:'visits'},{l:'Converted',r:1,k:'converted'}],d.by_person)}</div>`;
+ bindRows(d.due,async r=>{const all=await api('/api/leads');leadView(all.find(x=>x.id===r.id))})}
+async function leads(st=''){window._lSt=st;const mine=window._lMine?1:0;const rows=await api(`/api/leads?status=${encodeURIComponent(st)}&mine=${mine}`);window._leads=rows;
+ $('#view').innerHTML=`<h2>Leads</h2><div class="bar">${filterBar(L_ST,st,'leads')}<label class="chk"><input type="checkbox" ${mine?'checked':''} onchange="window._lMine=this.checked;leads(window._lSt||'')"> My leads only</label>
+ <input style="max-width:220px" placeholder="Search" oninput="leadFilter(this.value)"><span class="sp"></span>${has('sales')?'<button class="btn" onclick="leadForm()">+ New lead</button>':''}</div><div id="llist"></div>`;leadFilter('')}
+function leadFilter(q){q=q.toLowerCase();const rows=window._leads.filter(r=>[r.company,r.contact_person,r.mobile,r.city,r.area,r.lead_no].join(' ').toLowerCase().includes(q));
+ $('#llist').innerHTML=table([{l:'Lead No',k:'lead_no'},{l:'Date',k:'lead_date'},{l:'Company',f:r=>`<b>${esc(r.company)}</b><div class="mut">${esc(r.contact_person||'')} ${esc(r.mobile||'')}</div>`},{l:'City / Area',f:r=>esc([r.area,r.city].filter(Boolean).join(', '))},
+ {l:'Type',k:'customer_type'},{l:'Value (Rs)',r:1,f:r=>+r.expected_value?inr(r.expected_value):''},{l:'Priority',f:r=>pill(r.priority)},{l:'Status',f:r=>pill(r.status)},
+ {l:'Follow-up',f:r=>r.next_follow_up&&r.next_follow_up<=today()&&!['Converted','Lost'].includes(r.status)?`<b style="color:var(--bad)">${r.next_follow_up}</b>`:esc(r.next_follow_up)},{l:'Visits',r:1,k:'visits'},{l:'Owner',k:'owner'}],rows,1);
+ bindRows(rows,r=>leadView(r))}
+function leadFields(){return[
+ {type:'section',l:'Customer details'},{k:'lead_date',l:'Lead date',type:'date',def:today()},{k:'company',l:'Company / customer name',req:1},{k:'contact_person',l:'Contact person'},{k:'designation',l:'Designation'},
+ {k:'mobile',l:'Mobile',req:1},{k:'alt_mobile',l:'Alternate mobile'},{k:'email',l:'Email'},{k:'gstin',l:'GSTIN'},{k:'customer_type',l:'Customer type',type:'select',opts:['',...CTYPE]},
+ {type:'section',l:'Location'},{k:'address',l:'Address',wide:1},{k:'area',l:'Area / locality'},{k:'city',l:'City / town'},{k:'district',l:'District'},{k:'pincode',l:'Pincode'},
+ {type:'section',l:'Requirement'},{k:'products',l:'Products interested in',type:'multi',opts:PRODS},{k:'requirement',l:'Requirement details (thickness, colour, profile, lengths)',type:'area',wide:1},
+ {k:'application',l:'Application (factory shed, warehouse, re-roofing...)'},{k:'approx_qty',l:'Approx quantity / area'},{k:'expected_value',l:'Expected order value (Rs)',type:'number',def:0},{k:'expected_close',l:'Expected order date',type:'date'},{k:'competitor',l:'Competitor / current supplier'},
+ {type:'section',l:'Source & follow-up'},{k:'source',l:'Lead source',type:'select',opts:LSRC},{k:'referred_by',l:'Referred by'},{k:'priority',l:'Priority',type:'select',opts:PRIO,def:'Warm'},
+ {k:'status',l:'Status',type:'select',opts:L_ST},{k:'owner_id',l:'Assigned to',type:'select',opts:userOpts(),def:ME.id},{k:'next_follow_up',l:'Next follow-up date',type:'date'},
+ {k:'lost_reason',l:'Lost reason (if lost)'},{k:'remarks',l:'Remarks',type:'area',wide:1}]}
+function leadForm(r){form(r?'Edit lead '+r.lead_no:'New lead',leadFields(),r,async b=>{const s=r?await put('/api/leads/'+r.id,b):await post('/api/leads',b);toast(r?'Lead saved':'Lead '+s.lead_no+' created');closeM();refresh()})}
+async function leadView(r){if(!r)return;const vs=await api('/api/visits?lead_id='+r.id);const row=(a,b)=>b?`<div><span class="mut">${a}</span><br>${esc(b)}</div>`:'';
+ $('#mbody').innerHTML=`<h3>${esc(r.company)} ${pill(r.priority)} ${pill(r.status)}</h3><div class="mut">${esc(r.lead_no)} · ${esc(r.lead_date)} · owner ${esc(r.owner||'-')}${r.enq_no?' · Enquiry '+esc(r.enq_no):''}</div>
+ <div class="grid" style="margin-top:12px">${row('Contact',[r.contact_person,r.designation].filter(Boolean).join(', '))}${row('Mobile',[r.mobile,r.alt_mobile].filter(Boolean).join(' / '))}${row('Email',r.email)}${row('GSTIN',r.gstin)}
+ ${row('Location',[r.address,r.area,r.city,r.district,r.pincode].filter(Boolean).join(', '))}${row('Customer type',r.customer_type)}${row('Source',[r.source,r.referred_by].filter(Boolean).join(' - '))}
+ ${row('Products',r.products)}${row('Requirement',r.requirement)}${row('Application',r.application)}${row('Approx qty',r.approx_qty)}${row('Expected value',+r.expected_value?'Rs '+inr(r.expected_value):'')}
+ ${row('Expected order date',r.expected_close)}${row('Competitor',r.competitor)}${row('Next follow-up',r.next_follow_up)}${row('Remarks',r.remarks)}${row('Lost reason',r.lost_reason)}</div>
+ <div class="sec"><h4>Visits (${vs.length})</h4>${table([{l:'Date',k:'visit_date'},{l:'Type',k:'visit_type'},{l:'Met',k:'person_met'},{l:'Discussion',f:x=>esc((x.discussion||'').slice(0,90))},{l:'Outcome',k:'outcome'},{l:'By',k:'salesperson'}],vs)}</div>
+ <div class="mfoot"><button class="btn ghost" onclick="closeM()">Close</button>${r.mobile?`<a class="btn ghost" style="text-decoration:none" href="tel:${esc(r.mobile)}">Call</a><a class="btn ghost" style="text-decoration:none" target="_blank" href="https://wa.me/${waNum(r.mobile)}">WhatsApp</a>`:''}
+ ${has('sales')?`<button class="btn ghost" onclick='leadForm(${JSON.stringify(r).replace(/'/g,"&#39;")})'>Edit</button><button class="btn amb" onclick="visitForm({lead_id:${r.id}})">Mark visit</button>
+ ${!r.enquiry_id&&!['Lost'].includes(r.status)?`<button class="btn" onclick="convLead(${r.id})">Convert to enquiry</button>`:''}`:''}</div>`;openM()}
+const waNum=m=>{let d=String(m||'').replace(/\D/g,'');return d.length===10?'91'+d:d};
+async function convLead(id){if(!confirm('Create a customer (if new) and an enquiry from this lead?'))return;const r=await post(`/api/leads/${id}/convert`);CUST=await api('/api/customers');toast('Enquiry '+r.enq_no+' created');closeM();location.hash='enq'}
+let VGEO={};
+async function visitForm(pre={}){const ls=await api('/api/leads');const lo=[['','-- select lead --'],...ls.filter(l=>!['Lost'].includes(l.status)).map(l=>[l.id,l.company+(l.city?' - '+l.city:'')])];VGEO={};
+ form('Mark visit',[{type:'section',l:'Who'},{k:'visit_date',l:'Visit date',type:'date',def:today()},{k:'lead_id',l:'Lead',type:'select',opts:lo,def:pre.lead_id},{k:'customer_id',l:'or existing customer',type:'select',opts:custOpts()},
+ {k:'party_name',l:'or new party name (not in list)'},{k:'visit_type',l:'Visit type',type:'select',opts:VTYPE},{k:'purpose',l:'Purpose of visit'},
+ {type:'section',l:'Where'},{k:'location',l:'Site / location',wide:1},
+ {type:'section',l:'Meeting'},{k:'person_met',l:'Person met'},{k:'person_designation',l:'Designation'},{k:'person_mobile',l:'Their mobile'},
+ {k:'discussion',l:'Discussion / notes',type:'area',wide:1,req:1},{k:'outcome',l:'Outcome',type:'select',opts:VOUT},{k:'order_potential',l:'Order potential (Rs)',type:'number',def:0},
+ {k:'next_action',l:'Next action'},{k:'next_follow_up',l:'Next follow-up date',type:'date'}],null,
+ async b=>{Object.assign(b,VGEO);if(VGEO.photo)b.photo=VGEO.photo;const v=await post('/api/visits',b);toast('Visit '+v.visit_no+' saved');closeM();refresh()},
+ `<div class="sec"><button class="btn ghost sm" id="vgeo" onclick="getGeo()">📍 Capture my location</button> <span class="mut" id="vgeot"></span>
+ <div style="margin-top:10px"><label>Site photo (optional)</label><input type="file" accept="image/*" capture="environment" onchange="vPhoto(this)" style="max-width:320px"> <span class="mut" id="vpht"></span></div></div>`);getGeo(true)}
+function getGeo(quiet){if(!navigator.geolocation){if(!quiet)toast('Location not available on this device',1);return}$('#vgeot').textContent='Getting location...';
+ navigator.geolocation.getCurrentPosition(p=>{VGEO.latitude=p.coords.latitude.toFixed(6);VGEO.longitude=p.coords.longitude.toFixed(6);$('#vgeot').innerHTML=`Captured: <a target="_blank" href="https://maps.google.com/?q=${VGEO.latitude},${VGEO.longitude}">${VGEO.latitude}, ${VGEO.longitude}</a>`},
+ e=>{$('#vgeot').textContent=quiet?'Location not captured (allow location access and tap the button)':'Could not get location: '+e.message},{enableHighAccuracy:true,timeout:10000})}
+function vPhoto(inp){const f=inp.files[0];if(!f)return;const img=new Image();img.onload=()=>{const sc=Math.min(1,1000/Math.max(img.width,img.height));const cv=document.createElement('canvas');cv.width=img.width*sc;cv.height=img.height*sc;
+ cv.getContext('2d').drawImage(img,0,0,cv.width,cv.height);VGEO.photo=cv.toDataURL('image/jpeg',.7);$('#vpht').textContent='Photo attached ('+Math.round(VGEO.photo.length/1365)+' KB)'};img.src=URL.createObjectURL(f)}
+async function visits(){const mine=window._vMine?1:0,days=window._vDays??30;const rows=await api(`/api/visits?mine=${mine}&days=${days}`);
+ $('#view').innerHTML=`<h2>Visits</h2><div class="bar"><select style="width:auto" onchange="window._vDays=+this.value;visits()">${[[1,'Today'],[7,'Last 7 days'],[30,'Last 30 days'],[90,'Last 90 days'],[0,'All']].map(([v,t])=>`<option value="${v}" ${v===days?'selected':''}>${t}</option>`).join('')}</select>
+ <label class="chk"><input type="checkbox" ${mine?'checked':''} onchange="window._vMine=this.checked;visits()"> My visits only</label><span class="sp"></span>${has('sales')?'<button class="btn amb" onclick="visitForm()">Mark visit</button>':''}</div>
+ ${table([{l:'Visit No',k:'visit_no'},{l:'Date / time',f:r=>esc(r.visit_date)+'<div class="mut">'+new Date(r.check_in).toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'})+'</div>'},{l:'Party',f:r=>`<b>${esc(r.party)}</b>${r.lead_no?'<div class="mut">'+esc(r.lead_no)+'</div>':''}`},
+ {l:'Type',k:'visit_type'},{l:'Met',f:r=>esc([r.person_met,r.person_designation].filter(Boolean).join(', '))},{l:'Discussion',f:r=>esc((r.discussion||'').slice(0,80))},{l:'Outcome',k:'outcome'},
+ {l:'Location',f:r=>r.latitude?`<a target="_blank" onclick="event.stopPropagation()" href="https://maps.google.com/?q=${r.latitude},${r.longitude}">Map</a>`:esc(r.location||'')},{l:'By',k:'salesperson'}],rows,1)}`;
+ bindRows(rows,visitView)}
+async function visitView(r){const row=(a,b)=>b?`<div><span class="mut">${a}</span><br>${esc(b)}</div>`:'';
+ $('#mbody').innerHTML=`<h3>Visit ${esc(r.visit_no)} - ${esc(r.party)}</h3><div class="mut">${esc(r.visit_date)} ${new Date(r.check_in).toLocaleTimeString('en-IN')} · by ${esc(r.salesperson)}</div>
+ <div class="grid" style="margin-top:12px">${row('Visit type',r.visit_type)}${row('Purpose',r.purpose)}${row('Site / location',r.location)}${row('Person met',[r.person_met,r.person_designation,r.person_mobile].filter(Boolean).join(', '))}
+ ${row('Outcome',r.outcome)}${row('Order potential',+r.order_potential?'Rs '+inr(r.order_potential):'')}${row('Next action',r.next_action)}${row('Next follow-up',r.next_follow_up)}</div>
+ <div class="sec"><h4>Discussion</h4><div style="white-space:pre-line">${esc(r.discussion)}</div></div>
+ ${r.latitude?`<div class="sec"><a target="_blank" href="https://maps.google.com/?q=${r.latitude},${r.longitude}">📍 Open location in Google Maps</a></div>`:''}<div id="vph"></div>
+ <div class="mfoot"><button class="btn ghost" onclick="closeM()">Close</button></div>`;openM();
+ if(r.has_photo){const p=await api('/api/visits/'+r.id+'/photo');$('#vph').innerHTML=`<div class="sec"><h4>Photo</h4><img src="${p.photo}" style="max-width:100%;border-radius:8px"></div>`}}
 /* ---------- users & settings ---------- */
 const ROLES='admin, sales, approver, production, dispatch';
 async function users(){USERS=await api('/api/users');

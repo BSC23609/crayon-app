@@ -11,7 +11,7 @@ from psycopg.rows import dict_row
 from fastapi import FastAPI, Request, HTTPException, Depends, Response
 from fastapi.responses import HTMLResponse, JSONResponse
 
-BUILD = "C07"
+BUILD = "C08"
 DB_URL = os.environ.get("DATABASE_URL", "")
 SECRET = os.environ.get("SECRET_KEY", "change-me-in-vercel")
 COOKIE = "crs_session"
@@ -27,6 +27,22 @@ CREATE TABLE IF NOT EXISTS users (
 CREATE TABLE IF NOT EXISTS password_resets (
   id SERIAL PRIMARY KEY, user_id INT REFERENCES users(id) ON DELETE CASCADE, code_hash TEXT NOT NULL,
   expires_at TIMESTAMPTZ NOT NULL, attempts INT DEFAULT 0, used BOOLEAN DEFAULT FALSE, created_at TIMESTAMPTZ DEFAULT now());
+CREATE TABLE IF NOT EXISTS leads (
+  id SERIAL PRIMARY KEY, lead_no TEXT UNIQUE, lead_date DATE DEFAULT CURRENT_DATE, company TEXT NOT NULL,
+  contact_person TEXT, designation TEXT, mobile TEXT, alt_mobile TEXT, email TEXT, gstin TEXT,
+  address TEXT, area TEXT, city TEXT, district TEXT, pincode TEXT,
+  customer_type TEXT, source TEXT, referred_by TEXT, products TEXT, requirement TEXT, application TEXT,
+  approx_qty TEXT, expected_value NUMERIC(14,2) DEFAULT 0, expected_close DATE, competitor TEXT,
+  priority TEXT DEFAULT 'Warm', status TEXT DEFAULT 'New', owner_id INT REFERENCES users(id), next_follow_up DATE,
+  lost_reason TEXT, remarks TEXT, customer_id INT REFERENCES customers(id), enquiry_id INT REFERENCES enquiries(id),
+  created_by INT REFERENCES users(id), created_at TIMESTAMPTZ DEFAULT now(), updated_at TIMESTAMPTZ DEFAULT now());
+CREATE TABLE IF NOT EXISTS visits (
+  id SERIAL PRIMARY KEY, visit_no TEXT UNIQUE, visit_date DATE DEFAULT CURRENT_DATE, check_in TIMESTAMPTZ DEFAULT now(),
+  lead_id INT REFERENCES leads(id), customer_id INT REFERENCES customers(id), party_name TEXT,
+  visit_type TEXT, purpose TEXT, location TEXT, latitude NUMERIC(10,6), longitude NUMERIC(10,6),
+  person_met TEXT, person_designation TEXT, person_mobile TEXT, discussion TEXT, outcome TEXT,
+  order_potential NUMERIC(14,2) DEFAULT 0, next_action TEXT, next_follow_up DATE, photo TEXT,
+  user_id INT REFERENCES users(id), created_at TIMESTAMPTZ DEFAULT now());
 CREATE TABLE IF NOT EXISTS counters (key TEXT PRIMARY KEY, val INT NOT NULL DEFAULT 0);
 CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, val TEXT);
 CREATE TABLE IF NOT EXISTS customers (
@@ -816,6 +832,155 @@ async def update_dispatch(rid: int, request: Request, u=Depends(user), c=Depends
 
 
 # ---------------------------------------------------------------- dashboard
+# ---------------------------------------------------------------- sales: leads & visits
+LEAD_F = ["lead_date", "company", "contact_person", "designation", "mobile", "alt_mobile", "email", "gstin", "address",
+          "area", "city", "district", "pincode", "customer_type", "source", "referred_by", "products", "requirement",
+          "application", "approx_qty", "expected_value", "expected_close", "competitor", "priority", "status",
+          "owner_id", "next_follow_up", "lost_reason", "remarks"]
+VISIT_F = ["visit_date", "lead_id", "customer_id", "party_name", "visit_type", "purpose", "location", "latitude",
+           "longitude", "person_met", "person_designation", "person_mobile", "discussion", "outcome", "order_potential",
+           "next_action", "next_follow_up", "photo"]
+
+
+@app.get("/api/leads")
+def leads(status: str = "", mine: int = 0, u=Depends(user), c=Depends(db)):
+    q = ("SELECT l.*, us.name owner, (SELECT count(*) FROM visits v WHERE v.lead_id=l.id) visits, "
+         "(SELECT max(visit_date) FROM visits v WHERE v.lead_id=l.id) last_visit, e.enq_no "
+         "FROM leads l LEFT JOIN users us ON us.id=l.owner_id LEFT JOIN enquiries e ON e.id=l.enquiry_id WHERE TRUE")
+    args = []
+    if status:
+        q += " AND l.status=%s"
+        args.append(status)
+    if mine:
+        q += " AND l.owner_id=%s"
+        args.append(u["id"])
+    return c.execute(q + " ORDER BY l.id DESC LIMIT 1000", args).fetchall()
+
+
+@app.post("/api/leads")
+@app.put("/api/leads/{rid}")
+async def save_lead(request: Request, rid: int = None, u=Depends(user), c=Depends(db)):
+    need(u, "sales")
+    b = await request.json()
+    if not rid and not (b.get("company") or "").strip():
+        raise HTTPException(400, "Company / customer name is required")
+    if not rid and not (b.get("mobile") or "").strip():
+        raise HTTPException(400, "Mobile number is required")
+    if not rid:
+        b.update(lead_no=next_no(c, "LD"), created_by=u["id"])
+        b.setdefault("owner_id", u["id"])
+        return upsert(c, "leads", LEAD_F + ["lead_no", "created_by"], b)
+    row = upsert(c, "leads", LEAD_F, b, rid)
+    c.execute("UPDATE leads SET updated_at=now() WHERE id=%s", (rid,))
+    return row
+
+
+@app.post("/api/leads/{rid}/convert")
+def convert_lead(rid: int, u=Depends(user), c=Depends(db)):
+    """Lead -> customer (created if needed) + enquiry."""
+    need(u, "sales")
+    with c.transaction():
+        l = c.execute("SELECT * FROM leads WHERE id=%s", (rid,)).fetchone()
+        if not l:
+            raise HTTPException(404, "Lead not found")
+        if l["enquiry_id"]:
+            raise HTTPException(400, "This lead is already converted")
+        cid = l["customer_id"]
+        if not cid:
+            hit = c.execute("SELECT id FROM customers WHERE lower(name)=lower(%s) LIMIT 1", (l["company"],)).fetchone()
+            cid = hit["id"] if hit else c.execute(
+                "INSERT INTO customers(name,gstin,contact_person,mobile,email,address,city) VALUES(%s,%s,%s,%s,%s,%s,%s) RETURNING id",
+                (l["company"], l["gstin"], l["contact_person"], l["mobile"], l["email"],
+                 ", ".join(x for x in [l["address"], l["area"], l["district"], l["pincode"]] if x), l["city"])).fetchone()["id"]
+        req = "; ".join(x for x in [l["products"] and "Products: " + l["products"], l["requirement"],
+                                    l["approx_qty"] and "Qty: " + l["approx_qty"], l["application"] and "Use: " + l["application"]] if x)
+        e = c.execute("INSERT INTO enquiries(enq_no,source,customer_id,contact_name,mobile,site_location,requirement,owner_id,"
+                      "follow_up) VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id, enq_no",
+                      (next_no(c, "ENQ"), l["source"], cid, l["contact_person"], l["mobile"],
+                       l["area"] or l["city"], req or None, l["owner_id"] or u["id"], l["next_follow_up"])).fetchone()
+        c.execute("UPDATE leads SET status='Converted', customer_id=%s, enquiry_id=%s, updated_at=now() WHERE id=%s",
+                  (cid, e["id"], rid))
+    return {"ok": True, "enq_no": e["enq_no"], "enquiry_id": e["id"], "customer_id": cid}
+
+
+@app.get("/api/visits")
+def visits(mine: int = 0, lead_id: int = 0, days: int = 0, u=Depends(user), c=Depends(db)):
+    q = ("SELECT v.id, v.visit_no, v.visit_date, v.check_in, v.lead_id, v.customer_id, v.party_name, v.visit_type, v.purpose,"
+         " v.location, v.latitude, v.longitude, v.person_met, v.person_designation, v.person_mobile, v.discussion, v.outcome,"
+         " v.order_potential, v.next_action, v.next_follow_up, (v.photo IS NOT NULL) has_photo, v.user_id,"
+         " us.name salesperson, coalesce(l.company, cu.name, v.party_name) party, l.lead_no "
+         "FROM visits v LEFT JOIN users us ON us.id=v.user_id LEFT JOIN leads l ON l.id=v.lead_id "
+         "LEFT JOIN customers cu ON cu.id=v.customer_id WHERE TRUE")
+    args = []
+    if mine:
+        q += " AND v.user_id=%s"
+        args.append(u["id"])
+    if lead_id:
+        q += " AND v.lead_id=%s"
+        args.append(lead_id)
+    if days:
+        q += " AND v.visit_date >= CURRENT_DATE - %s"
+        args.append(days)
+    return c.execute(q + " ORDER BY v.check_in DESC LIMIT 1000", args).fetchall()
+
+
+@app.get("/api/visits/{rid}/photo")
+def visit_photo(rid: int, u=Depends(user), c=Depends(db)):
+    r = c.execute("SELECT photo FROM visits WHERE id=%s", (rid,)).fetchone()
+    if not r or not r["photo"]:
+        raise HTTPException(404, "No photo")
+    return {"photo": r["photo"]}
+
+
+@app.post("/api/visits")
+async def save_visit(request: Request, u=Depends(user), c=Depends(db)):
+    need(u, "sales")
+    b = await request.json()
+    for k in ("lead_id", "customer_id"):
+        b[k] = int(b[k]) if str(b.get(k) or "").isdigit() else None
+    if not (b["lead_id"] or b["customer_id"] or (b.get("party_name") or "").strip()):
+        raise HTTPException(400, "Choose a lead or customer, or type the party name")
+    if not (b.get("discussion") or "").strip():
+        raise HTTPException(400, "Enter what was discussed")
+    if b.get("photo") and len(b["photo"]) > 700_000:
+        raise HTTPException(400, "Photo is too large")
+    with c.transaction():
+        b.update(visit_no=next_no(c, "VS"), user_id=u["id"])
+        row = upsert(c, "visits", VISIT_F + ["visit_no", "user_id"], b)
+        if b["lead_id"]:
+            st = {"Order confirmed": "Qualified", "Quote requested": "Qualified", "Not interested": "Lost"}.get(b.get("outcome"))
+            c.execute("UPDATE leads SET next_follow_up=coalesce(%s, next_follow_up), updated_at=now(), "
+                      "status=CASE WHEN status IN ('Converted','Lost') THEN status WHEN %s::text IS NOT NULL THEN %s "
+                      "WHEN status='New' THEN 'Contacted' ELSE status END WHERE id=%s",
+                      (b.get("next_follow_up") or None, st, st, b["lead_id"]))
+    row.pop("photo", None)
+    return row
+
+
+@app.get("/api/sales-dashboard")
+def sales_dashboard(u=Depends(user), c=Depends(db)):
+    one = lambda sql, *a: c.execute(sql, a).fetchone()["n"]
+    open_st = "('New','Contacted','Visit Planned','Qualified')"
+    return {
+        "leads_month": one("SELECT count(*) n FROM leads WHERE date_trunc('month',lead_date)=date_trunc('month',CURRENT_DATE)"),
+        "open_leads": one(f"SELECT count(*) n FROM leads WHERE status IN {open_st}"),
+        "hot_leads": one(f"SELECT count(*) n FROM leads WHERE priority='Hot' AND status IN {open_st}"),
+        "pipeline": one(f"SELECT coalesce(sum(expected_value),0) n FROM leads WHERE status IN {open_st}"),
+        "followups_due": one(f"SELECT count(*) n FROM leads WHERE status IN {open_st} AND next_follow_up<=CURRENT_DATE"),
+        "visits_today": one("SELECT count(*) n FROM visits WHERE visit_date=CURRENT_DATE"),
+        "visits_month": one("SELECT count(*) n FROM visits WHERE date_trunc('month',visit_date)=date_trunc('month',CURRENT_DATE)"),
+        "converted_month": one("SELECT count(*) n FROM leads WHERE status='Converted' AND date_trunc('month',updated_at)=date_trunc('month',now())"),
+        "due": c.execute(f"SELECT l.id, l.lead_no, l.company, l.mobile, l.priority, l.status, l.next_follow_up, us.name owner "
+                         f"FROM leads l LEFT JOIN users us ON us.id=l.owner_id WHERE l.status IN {open_st} "
+                         f"AND l.next_follow_up<=CURRENT_DATE ORDER BY l.next_follow_up, l.id LIMIT 50").fetchall(),
+        "by_person": c.execute(
+            "SELECT us.name, (SELECT count(*) FROM leads l WHERE l.owner_id=us.id AND date_trunc('month',l.lead_date)=date_trunc('month',CURRENT_DATE)) leads,"
+            " (SELECT count(*) FROM visits v WHERE v.user_id=us.id AND date_trunc('month',v.visit_date)=date_trunc('month',CURRENT_DATE)) visits,"
+            " (SELECT count(*) FROM leads l WHERE l.owner_id=us.id AND l.status='Converted' AND date_trunc('month',l.updated_at)=date_trunc('month',now())) converted"
+            " FROM users us WHERE us.active ORDER BY visits DESC, leads DESC").fetchall(),
+    }
+
+
 @app.get("/api/dashboard")
 def dashboard(u=Depends(user), c=Depends(db)):
     one = lambda sql: c.execute(sql).fetchone()["n"]
