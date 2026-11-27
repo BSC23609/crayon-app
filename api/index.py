@@ -2,7 +2,7 @@
 FastAPI + Neon Postgres, deployed on Vercel.
 Flow: Enquiry -> Quotation -> Sales Order (approval) -> Cutting Program -> Dispatch
 """
-import os, re, hmac, urllib.error, hashlib, time, json, secrets, datetime as dt, html, urllib.request, urllib.parse
+import os, re, math, hmac, urllib.error, hashlib, time, json, secrets, datetime as dt, html, urllib.request, urllib.parse
 from pathlib import Path
 from decimal import Decimal, ROUND_HALF_UP
 
@@ -11,7 +11,7 @@ from psycopg.rows import dict_row
 from fastapi import FastAPI, Request, HTTPException, Depends, Response
 from fastapi.responses import HTMLResponse, JSONResponse
 
-BUILD = "C08"
+BUILD = "C09"
 DB_URL = os.environ.get("DATABASE_URL", "")
 SECRET = os.environ.get("SECRET_KEY", "change-me-in-vercel")
 COOKIE = "crs_session"
@@ -43,6 +43,16 @@ CREATE TABLE IF NOT EXISTS visits (
   person_met TEXT, person_designation TEXT, person_mobile TEXT, discussion TEXT, outcome TEXT,
   order_potential NUMERIC(14,2) DEFAULT 0, next_action TEXT, next_follow_up DATE, photo TEXT,
   user_id INT REFERENCES users(id), created_at TIMESTAMPTZ DEFAULT now());
+CREATE TABLE IF NOT EXISTS trips (
+  id SERIAL PRIMARY KEY, trip_no TEXT UNIQUE, user_id INT REFERENCES users(id), trip_date DATE DEFAULT CURRENT_DATE,
+  started_at TIMESTAMPTZ DEFAULT now(), start_lat NUMERIC(10,6), start_lng NUMERIC(10,6), start_place TEXT, start_odo NUMERIC(10,1),
+  ended_at TIMESTAMPTZ, end_lat NUMERIC(10,6), end_lng NUMERIC(10,6), end_place TEXT, end_odo NUMERIC(10,1),
+  gps_km NUMERIC(10,2) DEFAULT 0, vehicle TEXT, status TEXT DEFAULT 'Active', remarks TEXT);
+CREATE TABLE IF NOT EXISTS trip_points (
+  id SERIAL PRIMARY KEY, trip_id INT REFERENCES trips(id) ON DELETE CASCADE, ts TIMESTAMPTZ DEFAULT now(),
+  lat NUMERIC(10,6) NOT NULL, lng NUMERIC(10,6) NOT NULL, accuracy NUMERIC(8,1), kind TEXT DEFAULT 'track',
+  visit_id INT REFERENCES visits(id), label TEXT);
+CREATE INDEX IF NOT EXISTS trip_points_trip ON trip_points(trip_id, ts);
 CREATE TABLE IF NOT EXISTS counters (key TEXT PRIMARY KEY, val INT NOT NULL DEFAULT 0);
 CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, val TEXT);
 CREATE TABLE IF NOT EXISTS customers (
@@ -953,8 +963,144 @@ async def save_visit(request: Request, u=Depends(user), c=Depends(db)):
                       "status=CASE WHEN status IN ('Converted','Lost') THEN status WHEN %s::text IS NOT NULL THEN %s "
                       "WHEN status='New' THEN 'Contacted' ELSE status END WHERE id=%s",
                       (b.get("next_follow_up") or None, st, st, b["lead_id"]))
+    if b.get("latitude") and b.get("longitude"):
+        t = active_trip(c, u["id"])
+        if t:
+            add_point(c, t["id"], b["latitude"], b["longitude"], b.get("accuracy"), "visit", row["id"],
+                      (b.get("party_name") or "").strip() or None, force=True)
     row.pop("photo", None)
     return row
+
+
+# ---------------------------------------------------------------- sales: travel / distance tracking
+def km_between(a1, o1, a2, o2):
+    a1, o1, a2, o2 = map(lambda x: math.radians(float(x)), (a1, o1, a2, o2))
+    h = math.sin((a2 - a1) / 2) ** 2 + math.cos(a1) * math.cos(a2) * math.sin((o2 - o1) / 2) ** 2
+    return 6371.0 * 2 * math.asin(min(1.0, math.sqrt(h)))
+
+
+def active_trip(c, uid):
+    return c.execute("SELECT * FROM trips WHERE user_id=%s AND status='Active' ORDER BY id DESC LIMIT 1", (uid,)).fetchone()
+
+
+def recalc_km(c, tid):
+    pts = c.execute("SELECT lat,lng FROM trip_points WHERE trip_id=%s ORDER BY ts, id", (tid,)).fetchall()
+    km = sum(km_between(p["lat"], p["lng"], q["lat"], q["lng"]) for p, q in zip(pts, pts[1:]))
+    c.execute("UPDATE trips SET gps_km=%s WHERE id=%s", (round(km, 2), tid))
+    return round(km, 2)
+
+
+def add_point(c, tid, lat, lng, acc=None, kind="track", visit_id=None, label=None, force=False):
+    """Store a GPS point. Track pings are skipped when inaccurate (>150 m), too close to the last point (<100 m),
+    or an impossible jump (>150 km/h) so GPS noise doesn't inflate the distance."""
+    lat, lng = float(lat), float(lng)
+    if not (-90 <= lat <= 90 and -180 <= lng <= 180):
+        raise HTTPException(400, "Bad GPS position")
+    if not force:
+        if acc not in (None, "") and float(acc) > 150:
+            return {"skipped": "low accuracy"}
+        last = c.execute("SELECT lat,lng,ts FROM trip_points WHERE trip_id=%s ORDER BY ts DESC, id DESC LIMIT 1", (tid,)).fetchone()
+        if last:
+            d = km_between(last["lat"], last["lng"], lat, lng)
+            if d < 0.1:
+                return {"skipped": "not moved"}
+            hrs = max((dt.datetime.now(dt.timezone.utc) - last["ts"]).total_seconds() / 3600, 1 / 3600)
+            if d / hrs > 150:
+                return {"skipped": "jump"}
+    c.execute("INSERT INTO trip_points(trip_id,lat,lng,accuracy,kind,visit_id,label) VALUES(%s,%s,%s,%s,%s,%s,%s)",
+              (tid, lat, lng, acc if acc not in ("",) else None, kind, visit_id, label))
+    return {"ok": True, "km": recalc_km(c, tid)}
+
+
+def need_gps(b):
+    if b.get("lat") in (None, "") or b.get("lng") in (None, ""):
+        raise HTTPException(400, "GPS location is needed. Allow location access for this site and try again.")
+
+
+@app.get("/api/trips/active")
+def trip_active(u=Depends(user), c=Depends(db)):
+    t = active_trip(c, u["id"])
+    if t:
+        t["points"] = c.execute("SELECT count(*) n FROM trip_points WHERE trip_id=%s", (t["id"],)).fetchone()["n"]
+    return {"trip": t}
+
+
+@app.post("/api/trips/start")
+async def trip_start(request: Request, u=Depends(user), c=Depends(db)):
+    need(u, "sales")
+    b = await request.json()
+    need_gps(b)
+    if active_trip(c, u["id"]):
+        raise HTTPException(400, "You already have a trip running. End it first.")
+    with c.transaction():
+        t = c.execute("INSERT INTO trips(trip_no,user_id,start_lat,start_lng,start_place,start_odo,vehicle) "
+                      "VALUES(%s,%s,%s,%s,%s,%s,%s) RETURNING *",
+                      (next_no(c, "TR"), u["id"], b["lat"], b["lng"], b.get("place") or None,
+                       b.get("odo") or None, b.get("vehicle") or None)).fetchone()
+        add_point(c, t["id"], b["lat"], b["lng"], b.get("accuracy"), "start", label=b.get("place") or "Start", force=True)
+    return trip_active(u, c)
+
+
+@app.post("/api/trips/point")
+async def trip_point(request: Request, u=Depends(user), c=Depends(db)):
+    b = await request.json()
+    need_gps(b)
+    t = active_trip(c, u["id"])
+    if not t:
+        return {"skipped": "no active trip"}
+    return add_point(c, t["id"], b["lat"], b["lng"], b.get("accuracy"))
+
+
+@app.post("/api/trips/end")
+async def trip_end(request: Request, u=Depends(user), c=Depends(db)):
+    b = await request.json()
+    t = active_trip(c, u["id"])
+    if not t:
+        raise HTTPException(400, "No trip is running")
+    if b.get("odo") and t["start_odo"] and D(b["odo"]) < D(t["start_odo"]):
+        raise HTTPException(400, "End odometer reading is less than the start reading")
+    with c.transaction():
+        if b.get("lat") not in (None, "") and b.get("lng") not in (None, ""):
+            add_point(c, t["id"], b["lat"], b["lng"], b.get("accuracy"), "end", label=b.get("place") or "End", force=True)
+        km = recalc_km(c, t["id"])
+        c.execute("UPDATE trips SET status='Closed', ended_at=now(), end_lat=%s, end_lng=%s, end_place=%s, end_odo=%s, "
+                  "remarks=%s WHERE id=%s", (b.get("lat") or None, b.get("lng") or None, b.get("place") or None,
+                                            b.get("odo") or None, b.get("remarks") or None, t["id"]))
+    return {"ok": True, "km": km, "trip_no": t["trip_no"]}
+
+
+TRIP_LIST = ("SELECT t.*, us.name salesperson, (SELECT count(*) FROM trip_points p WHERE p.trip_id=t.id AND p.kind='visit') visits, "
+             "(SELECT count(*) FROM trip_points p WHERE p.trip_id=t.id) points, "
+             "CASE WHEN t.end_odo IS NOT NULL AND t.start_odo IS NOT NULL THEN t.end_odo-t.start_odo END odo_km, "
+             "round(extract(epoch FROM coalesce(t.ended_at,now())-t.started_at)/3600.0,2) hours "
+             "FROM trips t LEFT JOIN users us ON us.id=t.user_id WHERE TRUE")
+
+
+@app.get("/api/trips")
+def trips(days: int = 30, mine: int = 0, user_id: int = 0, u=Depends(user), c=Depends(db)):
+    q, args = TRIP_LIST, []
+    if days:
+        q += " AND t.trip_date >= CURRENT_DATE - %s"
+        args.append(days)
+    if mine:
+        q += " AND t.user_id=%s"
+        args.append(u["id"])
+    elif user_id:
+        q += " AND t.user_id=%s"
+        args.append(user_id)
+    return c.execute(q + " ORDER BY t.started_at DESC LIMIT 1000", args).fetchall()
+
+
+@app.get("/api/trips/{rid}")
+def trip(rid: int, u=Depends(user), c=Depends(db)):
+    t = c.execute(TRIP_LIST + " AND t.id=%s", (rid,)).fetchone()
+    if not t:
+        raise HTTPException(404, "Trip not found")
+    t["points"] = c.execute("SELECT p.ts, p.lat, p.lng, p.accuracy, p.kind, p.label, p.visit_id, "
+                            "coalesce(l.company, cu.name, v.party_name, p.label) party, v.visit_no, v.outcome "
+                            "FROM trip_points p LEFT JOIN visits v ON v.id=p.visit_id LEFT JOIN leads l ON l.id=v.lead_id "
+                            "LEFT JOIN customers cu ON cu.id=v.customer_id WHERE p.trip_id=%s ORDER BY p.ts, p.id", (rid,)).fetchall()
+    return t
 
 
 @app.get("/api/sales-dashboard")
@@ -970,14 +1116,20 @@ def sales_dashboard(u=Depends(user), c=Depends(db)):
         "visits_today": one("SELECT count(*) n FROM visits WHERE visit_date=CURRENT_DATE"),
         "visits_month": one("SELECT count(*) n FROM visits WHERE date_trunc('month',visit_date)=date_trunc('month',CURRENT_DATE)"),
         "converted_month": one("SELECT count(*) n FROM leads WHERE status='Converted' AND date_trunc('month',updated_at)=date_trunc('month',now())"),
+        "km_today": one("SELECT coalesce(sum(gps_km),0) n FROM trips WHERE trip_date=CURRENT_DATE"),
+        "km_month": one("SELECT coalesce(sum(gps_km),0) n FROM trips WHERE date_trunc('month',trip_date)=date_trunc('month',CURRENT_DATE)"),
+        "active_trips": one("SELECT count(*) n FROM trips WHERE status='Active'"),
+        "trips_today": c.execute(TRIP_LIST + " AND t.trip_date=CURRENT_DATE ORDER BY t.started_at").fetchall(),
         "due": c.execute(f"SELECT l.id, l.lead_no, l.company, l.mobile, l.priority, l.status, l.next_follow_up, us.name owner "
                          f"FROM leads l LEFT JOIN users us ON us.id=l.owner_id WHERE l.status IN {open_st} "
                          f"AND l.next_follow_up<=CURRENT_DATE ORDER BY l.next_follow_up, l.id LIMIT 50").fetchall(),
         "by_person": c.execute(
             "SELECT us.name, (SELECT count(*) FROM leads l WHERE l.owner_id=us.id AND date_trunc('month',l.lead_date)=date_trunc('month',CURRENT_DATE)) leads,"
             " (SELECT count(*) FROM visits v WHERE v.user_id=us.id AND date_trunc('month',v.visit_date)=date_trunc('month',CURRENT_DATE)) visits,"
-            " (SELECT count(*) FROM leads l WHERE l.owner_id=us.id AND l.status='Converted' AND date_trunc('month',l.updated_at)=date_trunc('month',now())) converted"
-            " FROM users us WHERE us.active ORDER BY visits DESC, leads DESC").fetchall(),
+            " (SELECT count(*) FROM leads l WHERE l.owner_id=us.id AND l.status='Converted' AND date_trunc('month',l.updated_at)=date_trunc('month',now())) converted,"
+            " (SELECT coalesce(sum(t.gps_km),0) FROM trips t WHERE t.user_id=us.id AND date_trunc('month',t.trip_date)=date_trunc('month',CURRENT_DATE)) km,"
+            " (SELECT count(*) FROM trips t WHERE t.user_id=us.id AND date_trunc('month',t.trip_date)=date_trunc('month',CURRENT_DATE)) trips"
+            " FROM users us WHERE us.active ORDER BY km DESC, visits DESC, leads DESC").fetchall(),
     }
 
 
