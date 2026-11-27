@@ -11,7 +11,7 @@ from psycopg.rows import dict_row
 from fastapi import FastAPI, Request, HTTPException, Depends, Response
 from fastapi.responses import HTMLResponse, JSONResponse
 
-BUILD = "C10"
+BUILD = "C11"
 DB_URL = os.environ.get("DATABASE_URL", "")
 SECRET = os.environ.get("SECRET_KEY", "change-me-in-vercel")
 COOKIE = "crs_session"
@@ -913,6 +913,23 @@ def convert_lead(rid: int, u=Depends(user), c=Depends(db)):
     return {"ok": True, "enq_no": e["enq_no"], "enquiry_id": e["id"], "customer_id": cid}
 
 
+@app.delete("/api/leads/{rid}")
+def delete_lead(rid: int, u=Depends(user), c=Depends(db)):
+    need(u, "sales")
+    l = c.execute("SELECT l.*, e.enq_no FROM leads l LEFT JOIN enquiries e ON e.id=l.enquiry_id WHERE l.id=%s", (rid,)).fetchone()
+    if not l:
+        raise HTTPException(404, "Lead not found")
+    if "admin" not in u["role_set"] and u["id"] not in (l["created_by"], l["owner_id"]):
+        raise HTTPException(403, "Only an admin or the lead's owner can delete it")
+    if l["enquiry_id"]:
+        raise HTTPException(400, f"This lead is already converted to enquiry {l['enq_no']} and cannot be deleted")
+    with c.transaction():
+        # keep the visit history: detach visits and keep the company name on them
+        c.execute("UPDATE visits SET party_name=coalesce(party_name,%s), lead_id=NULL WHERE lead_id=%s", (l["company"], rid))
+        c.execute("DELETE FROM leads WHERE id=%s", (rid,))
+    return {"ok": True}
+
+
 @app.get("/api/visits")
 def visits(mine: int = 0, lead_id: int = 0, days: int = 0, u=Depends(user), c=Depends(db)):
     q = ("SELECT v.id, v.visit_no, v.visit_date, v.check_in, v.lead_id, v.customer_id, v.party_name, v.visit_type, v.purpose,"
@@ -1101,6 +1118,23 @@ def trip(rid: int, u=Depends(user), c=Depends(db)):
                             "FROM trip_points p LEFT JOIN visits v ON v.id=p.visit_id LEFT JOIN leads l ON l.id=v.lead_id "
                             "LEFT JOIN customers cu ON cu.id=v.customer_id WHERE p.trip_id=%s ORDER BY p.ts, p.id", (rid,)).fetchall()
     return t
+
+
+@app.delete("/api/visits/{rid}")
+def delete_visit(rid: int, u=Depends(user), c=Depends(db)):
+    need(u, "sales")
+    v = c.execute("SELECT id, user_id FROM visits WHERE id=%s", (rid,)).fetchone()
+    if not v:
+        raise HTTPException(404, "Visit not found")
+    if "admin" not in u["role_set"] and u["id"] != v["user_id"]:
+        raise HTTPException(403, "Only an admin or the person who marked the visit can delete it")
+    with c.transaction():
+        trips = [r["trip_id"] for r in c.execute("SELECT DISTINCT trip_id FROM trip_points WHERE visit_id=%s", (rid,))]
+        c.execute("DELETE FROM trip_points WHERE visit_id=%s", (rid,))
+        c.execute("DELETE FROM visits WHERE id=%s", (rid,))
+        for t in trips:
+            recalc_km(c, t)
+    return {"ok": True}
 
 
 @app.get("/api/sales-dashboard")

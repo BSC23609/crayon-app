@@ -340,7 +340,8 @@ async function leadView(r){if(!r)return;const vs=await api('/api/visits?lead_id=
  <div class="sec"><h4>Visits (${vs.length})</h4>${table([{l:'Date',k:'visit_date'},{l:'Type',k:'visit_type'},{l:'Met',k:'person_met'},{l:'Discussion',f:x=>esc((x.discussion||'').slice(0,90))},{l:'Outcome',k:'outcome'},{l:'By',k:'salesperson'}],vs)}</div>
  <div class="mfoot"><button class="btn ghost" onclick="closeM()">Close</button>${r.mobile?`<a class="btn ghost" style="text-decoration:none" href="tel:${esc(r.mobile)}">Call</a><a class="btn ghost" style="text-decoration:none" target="_blank" href="https://wa.me/${waNum(r.mobile)}">WhatsApp</a>`:''}
  ${has('sales')?`<button class="btn ghost" onclick='leadForm(${JSON.stringify(r).replace(/'/g,"&#39;")})'>Edit</button><button class="btn amb" onclick="visitForm({lead_id:${r.id}})">Mark visit</button>
- ${!r.enquiry_id&&!['Lost'].includes(r.status)?`<button class="btn" onclick="convLead(${r.id})">Convert to enquiry</button>`:''}`:''}</div>`;openM()}
+ ${!r.enquiry_id&&!['Lost'].includes(r.status)?`<button class="btn" onclick="convLead(${r.id})">Convert to enquiry</button>`:''}`:''}
+ ${canDel(r.created_by,r.owner_id)&&!r.enquiry_id?`<button class="btn red" onclick="delLead(${r.id},'${esc(r.company).replace(/'/g,'')}')">Delete</button>`:''}</div>`;openM()}
 const waNum=m=>{let d=String(m||'').replace(/\D/g,'');return d.length===10?'91'+d:d};
 async function convLead(id){if(!confirm('Create a customer (if new) and an enquiry from this lead?'))return;const r=await post(`/api/leads/${id}/convert`);CUST=await api('/api/customers');toast('Enquiry '+r.enq_no+' created');closeM();location.hash='enq'}
 let VGEO={};
@@ -372,9 +373,15 @@ async function visitView(r){const row=(a,b)=>b?`<div><span class="mut">${a}</spa
  ${row('Outcome',r.outcome)}${row('Order potential',+r.order_potential?'Rs '+inr(r.order_potential):'')}${row('Next action',r.next_action)}${row('Next follow-up',r.next_follow_up)}</div>
  <div class="sec"><h4>Discussion</h4><div style="white-space:pre-line">${esc(r.discussion)}</div></div>
  ${r.latitude?`<div class="sec"><a target="_blank" href="https://maps.google.com/?q=${r.latitude},${r.longitude}">📍 Open location in Google Maps</a></div>`:''}<div id="vph"></div>
- <div class="mfoot"><button class="btn ghost" onclick="closeM()">Close</button></div>`;openM();
+ <div class="mfoot"><button class="btn ghost" onclick="closeM()">Close</button>${canDel(r.user_id)?`<button class="btn red" onclick="delVisit(${r.id},'${esc(r.visit_no)}')">Delete</button>`:''}</div>`;openM();
  if(r.has_photo){const p=await api('/api/visits/'+r.id+'/photo');$('#vph').innerHTML=`<div class="sec"><h4>Photo</h4><img src="${p.photo}" style="max-width:100%;border-radius:8px"></div>`}}
 
+
+const canDel=(...ids)=>has('admin')||(has('sales')&&ids.includes(ME.id));
+async function delLead(id,name){if(!confirm('Delete lead "'+name+'"?\n\nIts visits are kept (they stay under Visits). This cannot be undone.'))return;
+ await api('/api/leads/'+id,{method:'DELETE'});closeM();toast('Lead deleted');refresh()}
+async function delVisit(id,no){if(!confirm('Delete visit '+no+'?\n\nIt is also removed from the trip route. This cannot be undone.'))return;
+ await api('/api/visits/'+id,{method:'DELETE'});closeM();toast('Visit deleted');refresh()}
 /* ---------- SALES: travel / distance tracking ---------- */
 const km=v=>(+v||0).toLocaleString('en-IN',{maximumFractionDigits:1})+' km';
 const hm=h=>{h=+h||0;return Math.floor(h)+'h '+String(Math.round((h%1)*60)).padStart(2,'0')+'m'};
